@@ -1,0 +1,36 @@
+name: Release
+# Push a tag like v0.2.0 (matching package.json "version") to build installers
+# and attach them to a draft GitHub Release. Review the draft, then publish it:
+# only published releases are offered to the apps as updates.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write # create the draft release and upload files
+
+jobs:
+  release:
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Tag matches package.json version
+        shell: bash
+        run: test "v$(node -p 'require("./package.json").version')" = "${GITHUB_REF_NAME}"
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - run: npx electron-builder --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false # unsigned builds
