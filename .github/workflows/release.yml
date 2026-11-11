@@ -1,6 +1,7 @@
 name: Release
 # Two ways to start a release (the version always comes from package.json):
-#  - Actions tab -> Release -> "Run workflow" on main: creates the tag vX.Y.Z itself.
+#  - Actions tab -> Release -> "Run workflow" on main: creates the tag vX.Y.Z itself
+#    (or rebuilds it, if the tag already points at that commit and is not published).
 #  - Push a tag vX.Y.Z by hand (it must match package.json).
 # Installers are built for macOS and Windows and attached to a DRAFT GitHub
 # Release. Review the draft, then publish it: only published releases are
@@ -28,28 +29,59 @@ jobs:
         with:
           node-version: 22
       - id: tag
-        name: Work out (and if started by hand, create) the tag
+        name: Work out the tag and create the one draft release
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           tag="v$(node -p 'require("./package.json").version')"
+
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
             if [ "$GITHUB_REF" != "refs/heads/main" ]; then
               echo "::error::Start releases from the main branch (selected: $GITHUB_REF)"
               exit 1
             fi
             if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
-              echo "::error::$tag already exists. Raise the version in package.json first."
-              exit 1
+              # Re-running the same version is fine (e.g. after deleting a broken draft),
+              # but only for the commit the tag already points at.
+              git fetch -q --depth=1 origin "refs/tags/$tag:refs/tags/$tag"
+              if [ "$(git rev-parse "$tag^{commit}")" != "$GITHUB_SHA" ]; then
+                echo "::error::$tag already exists on another commit. Raise the version in package.json first."
+                exit 1
+              fi
+              echo "$tag already points at this commit: building it again."
+            else
+              git -c user.name="github-actions[bot]" \
+                  -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+                  tag -a "$tag" -m "ChurchVault ${tag#v}" "$GITHUB_SHA"
+              # Pushed with the workflow token, so it does not start this workflow a second time.
+              git push origin "refs/tags/$tag"
             fi
-            git -c user.name="github-actions[bot]" \
-                -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-                tag -a "$tag" -m "ChurchVault ${tag#v}" "$GITHUB_SHA"
-            # Pushed with the workflow token, so it does not start this workflow a second time.
-            git push origin "refs/tags/$tag"
           elif [ "$tag" != "$GITHUB_REF_NAME" ]; then
             echo "::error::Tag $GITHUB_REF_NAME does not match package.json version ($tag)"
             exit 1
+          fi
+
+          # Create the draft release here, once, before any build job starts. Otherwise the
+          # build jobs (and electron-builder's parallel uploads within one job) race each
+          # other and each creates its own draft, splitting the files between them.
+          releases="$(gh release list --limit 100 --json tagName,isDraft \
+            --jq "[.[] | select(.tagName == \"$tag\")]")"
+          if [ "$(jq '[.[] | select(.isDraft | not)] | length' <<<"$releases")" -gt 0 ]; then
+            echo "::error::$tag is already published. Raise the version in package.json first."
+            exit 1
+          fi
+          drafts="$(jq length <<<"$releases")"
+          if [ "$drafts" -gt 1 ]; then
+            echo "::error::There are $drafts draft releases for $tag. Delete them on the Releases page and run this again."
+            exit 1
+          elif [ "$drafts" -eq 1 ]; then
+            echo "Reusing the existing draft release for $tag."
+          else
+            gh release create "$tag" --draft --verify-tag --title "${tag#v}" \
+              --notes "ChurchVault ${tag#v}. Installation guide: docs/INSTALL.md"
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 

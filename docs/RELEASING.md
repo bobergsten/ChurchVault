@@ -13,7 +13,9 @@
      git push origin v0.2.0
      ```
 
-3. The workflow (`.github/workflows/release.yml`) runs all checks, builds the macOS (Apple Silicon and Intel) and Windows installers, and attaches them to a **draft** release. It refuses to run if the tag already exists or doesn't match `package.json`.
+3. The workflow (`.github/workflows/release.yml`) creates one **draft** release, runs all checks, then builds the macOS (Apple Silicon and Intel) and Windows installers and attaches them to that draft. It refuses to run if the tag doesn't match `package.json`, if the version is already published, or (when started by hand) if the tag already exists on a different commit.
+
+   **If a release run goes wrong** before publishing: delete its draft(s) on the Releases page, keep the tag, and use **Run workflow** again. It rebuilds the same version as long as the tag points at the latest commit on `main`.
 4. On github.com → **Releases**, open the draft, write a short "what changed", and **Publish**. Only published releases are offered to installed apps as updates.
 
 Requirements:
