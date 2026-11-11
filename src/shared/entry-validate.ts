@@ -42,9 +42,12 @@ export function parseEntryInput(raw: unknown): EntryInput {
     if (typeof x?.id !== 'string' || !ENTRY_ID_PATTERN.test(x.id) || typeof x.name !== 'string' || typeof x.size !== 'number' || typeof x.mime !== 'string') {
       throw new Error('Invalid attachment')
     }
+    if (!Number.isSafeInteger(x.size) || x.size < 0) throw new Error('Invalid attachment')
+    const mime = x.mime.trim()
+    if (!mime || mime.length > 255) throw new Error('Invalid attachment')
     const name = x.name.trim().slice(0, 255)
     if (!name) throw new Error('Attachment name is required')
-    return { id: x.id, name, size: x.size, mime: x.mime }
+    return { id: x.id, name, size: x.size, mime }
   })
   if (new Set(cleanAttachments.map((a) => a.id)).size !== cleanAttachments.length) throw new Error('Duplicate attachment')
 

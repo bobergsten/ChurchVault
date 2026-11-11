@@ -28,6 +28,10 @@ describe('parseEntryInput', () => {
     expect(() => parseEntryInput({ ...base, attachments: [{ ...att, id: '../../x' }] })).toThrow(/attachment/)
     expect(() => parseEntryInput({ ...base, attachments: [att, att] })).toThrow(/Duplicate/)
     expect(() => parseEntryInput({ ...base, attachments: [{ ...att, name: ' ' }] })).toThrow(/name/)
+    for (const size of [NaN, Infinity, -1, 1.5]) {
+      expect(() => parseEntryInput({ ...base, attachments: [{ ...att, size }] })).toThrow(/attachment/)
+    }
+    expect(() => parseEntryInput({ ...base, attachments: [{ ...att, mime: ' ' }] })).toThrow(/attachment/)
     expect(() => parseEntryInput({ ...base, notes: 'x'.repeat(200_000) })).toThrow(/long/)
   })
 })

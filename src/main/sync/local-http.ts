@@ -17,9 +17,15 @@ function run(args: string[], input?: Buffer): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const p = spawn('git', args)
     const out: Buffer[] = []
+    const err: Buffer[] = []
     p.stdout.on('data', (d: Buffer) => out.push(d))
+    p.stderr.on('data', (d: Buffer) => err.push(d))
     p.on('error', reject)
-    p.on('close', () => resolve(Buffer.concat(out)))
+    p.on('close', (code) => {
+      // Fail loudly with git's own message instead of handing the client a truncated response.
+      if (code === 0) resolve(Buffer.concat(out))
+      else reject(new Error(`git ${args[0]} exited with ${code}: ${Buffer.concat(err).toString('utf8').trim()}`))
+    })
     p.stdin.end(input)
   })
 }
