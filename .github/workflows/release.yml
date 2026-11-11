@@ -1,16 +1,57 @@
 name: Release
-# Push a tag like v0.2.0 (matching package.json "version") to build installers
-# and attach them to a draft GitHub Release. Review the draft, then publish it:
-# only published releases are offered to the apps as updates.
+# Two ways to start a release (the version always comes from package.json):
+#  - Actions tab -> Release -> "Run workflow" on main: creates the tag vX.Y.Z itself.
+#  - Push a tag vX.Y.Z by hand (it must match package.json).
+# Installers are built for macOS and Windows and attached to a DRAFT GitHub
+# Release. Review the draft, then publish it: only published releases are
+# offered to installed apps as updates.
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
 
 permissions:
-  contents: write # create the draft release and upload files
+  contents: write # push the tag, create the draft release, upload files
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: tag
+        name: Work out (and if started by hand, create) the tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="v$(node -p 'require("./package.json").version')"
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+              echo "::error::Start releases from the main branch (selected: $GITHUB_REF)"
+              exit 1
+            fi
+            if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+              echo "::error::$tag already exists. Raise the version in package.json first."
+              exit 1
+            fi
+            git -c user.name="github-actions[bot]" \
+                -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+                tag -a "$tag" -m "ChurchVault ${tag#v}" "$GITHUB_SHA"
+            # Pushed with the workflow token, so it does not start this workflow a second time.
+            git push origin "refs/tags/$tag"
+          elif [ "$tag" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version ($tag)"
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
   release:
+    needs: prepare
     strategy:
       fail-fast: true
       matrix:
@@ -18,13 +59,12 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - name: Tag matches package.json version
-        shell: bash
-        run: test "v$(node -p 'require("./package.json").version')" = "${GITHUB_REF_NAME}"
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
