@@ -4,5 +4,6 @@ import tseslint from 'typescript-eslint'
 export default tseslint.config(
   { ignores: ['out/**', 'dist/**', 'node_modules/**'] },
   js.configs.recommended,
-  ...tseslint.configs.recommended
+  ...tseslint.configs.recommended,
+  { files: ['e2e/**'], languageOptions: { globals: { process: 'readonly', console: 'readonly' } } }
 )
