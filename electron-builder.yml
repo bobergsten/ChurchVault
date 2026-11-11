@@ -1,0 +1,11 @@
+appId: org.churchvault.app
+productName: ChurchVault
+directories:
+  output: dist
+files:
+  - out/**
+mac:
+  target: dmg
+  identity: null   # unsigned for now
+win:
+  target: nsis
