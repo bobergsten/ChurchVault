@@ -1,7 +1,7 @@
-import type { VaultApi } from '@shared/api'
+import type { RawVaultApi } from '@shared/api'
 
 declare global {
   interface Window {
-    vault: VaultApi
+    vault: RawVaultApi
   }
 }

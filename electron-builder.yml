@@ -11,4 +11,4 @@ win:
   target: nsis
 asarUnpack:
   - "**/*.node"   # native modules (SQLCipher) cannot load from inside the asar archive
-npmRebuild: true  # rebuild native modules against Electron's ABI when packaging
+npmRebuild: false # SQLCipher ships N-API prebuilds that work in Node and Electron unchanged

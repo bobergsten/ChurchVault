@@ -70,11 +70,50 @@ export type EntryInput = { [T in EntryType]: Omit<EntryBase<T>, 'id' | 'createdA
 
 export const ENTRY_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
-/** Fields that are secret and therefore never put in the search index. */
-export const SECRET_FIELDS: Record<EntryType, readonly string[]> = {
-  login: ['password', 'totpSecret'],
-  card: ['number', 'cvv', 'pin'],
-  doorcode: ['code'],
+export interface FieldSpec {
+  key: string
+  label: string
+  /** masked in the UI, never searchable */
+  secret?: boolean
+  multiline?: boolean
+  optional?: boolean
+}
+
+/** Single source of truth for the per-type fields: used by validation, forms and the search index. */
+export const FIELD_SPECS: Record<EntryType, FieldSpec[]> = {
+  login: [
+    { key: 'url', label: 'Website' },
+    { key: 'username', label: 'Username' },
+    { key: 'password', label: 'Password', secret: true },
+    { key: 'totpSecret', label: 'One-time code secret (TOTP)', secret: true, optional: true }
+  ],
+  card: [
+    { key: 'holder', label: 'Card holder' },
+    { key: 'number', label: 'Card number', secret: true },
+    { key: 'expiry', label: 'Expiry (MM/YY)' },
+    { key: 'cvv', label: 'CVV', secret: true },
+    { key: 'pin', label: 'PIN', secret: true, optional: true },
+    { key: 'billingAddress', label: 'Billing address', multiline: true, optional: true }
+  ],
+  doorcode: [
+    { key: 'location', label: 'Location' },
+    { key: 'code', label: 'Code', secret: true },
+    { key: 'sharedWith', label: 'Shared with', optional: true },
+    { key: 'lastChanged', label: 'Last changed', optional: true }
+  ],
   document: [],
   note: []
 }
+
+export const TYPE_LABELS: Record<EntryType, string> = {
+  login: 'Logins',
+  card: 'Cards',
+  doorcode: 'Door codes',
+  document: 'Documents',
+  note: 'Notes'
+}
+
+/** Fields that are secret and therefore never put in the search index. */
+export const SECRET_FIELDS: Record<EntryType, readonly string[]> = Object.fromEntries(
+  ENTRY_TYPES.map((t) => [t, FIELD_SPECS[t].filter((f) => f.secret).map((f) => f.key)])
+) as unknown as Record<EntryType, readonly string[]>

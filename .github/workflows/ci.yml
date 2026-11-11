@@ -20,6 +20,9 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+      - name: End-to-end (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npm run e2e
   package:
     needs: check
     strategy:

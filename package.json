@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "lint": "eslint .",
     "test": "vitest run",
+    "e2e": "node e2e/smoke.mjs",
     "dist": "npm run build && electron-builder"
   },
   "devDependencies": {
@@ -26,6 +27,7 @@
     "electron-builder": "^26.18.0",
     "electron-vite": "^6.0.0",
     "eslint": "^10.14.0",
+    "playwright": "^1.65.0",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.72.2",
     "vite": "^8.3.8",
