@@ -15,19 +15,25 @@ const PW = 'long-enough-pw'
 const login = (title: string, password = 'p') =>
   ({ type: 'login', title, tags: [], favorite: false, notes: '', attachments: [], fields: { url: 'u', username: 'x', password } }) as const
 
+/** Every service a test creates; locked before the temp folder is deleted (Windows cannot delete open files). */
+const opened: VaultService[] = []
+function track(s: VaultService): VaultService {
+  opened.push(s)
+  return s
+}
 let root: string
 let server: ReturnType<typeof localGitServer>
 
 async function service(name: string, secrets = new MemorySecretStore()): Promise<VaultService & { secrets: MemorySecretStore }> {
   mkdirSync(join(root, name, 'data'), { recursive: true })
-  const s = new VaultService({
+  const s = track(new VaultService({
     repoDir: join(root, name, 'repo'),
     dataDir: join(root, name, 'data'),
     kdf: await fastKdfParamsForTests(),
     http: server.http,
     secrets,
     allowedRemote: /^http:\/\/local\//
-  })
+  }))
   return Object.assign(s, { secrets })
 }
 
@@ -43,7 +49,10 @@ beforeEach(() => {
   execFileSync('git', ['init', '--bare', '-b', 'main', join(root, 'vault.git')], { stdio: 'ignore' })
   server = localGitServer(root, TOKEN)
 })
-afterEach(() => rmSync(root, { recursive: true, force: true }))
+afterEach(() => {
+  for (const s of opened.splice(0)) s.lock()
+  rmSync(root, { recursive: true, force: true, maxRetries: 5 })
+})
 
 describe('connecting a remote', () => {
   it('pushes the vault and remembers the token', async () => {
@@ -68,7 +77,7 @@ describe('connecting a remote', () => {
     const a = await service('a')
     await a.createVault('Anna', PW)
     await unlockFirst(a)
-    const strict = new VaultService({ repoDir: join(root, 'a', 'repo'), dataDir: join(root, 'a', 'data'), kdf: await fastKdfParamsForTests(), http: server.http, secrets: new MemorySecretStore() })
+    const strict = track(new VaultService({ repoDir: join(root, 'a', 'repo'), dataDir: join(root, 'a', 'data'), kdf: await fastKdfParamsForTests(), http: server.http, secrets: new MemorySecretStore() }))
     await unlockFirst(strict)
     for (const bad of ['http://github.com/x/y', 'https://evil.example/x/y', 'https://github.com/x', 'https://github.com/x/y/z', 'git@github.com:x/y.git']) {
       await expect(strict.connectRemote(bad, TOKEN)).rejects.toMatchObject({ code: 'invalid-url' })

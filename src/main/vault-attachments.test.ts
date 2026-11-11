@@ -18,19 +18,25 @@ const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2
 const doc = (attachments: AttachmentRef[], title = 'Deed') =>
   ({ type: 'document', title, tags: [], favorite: false, notes: '', attachments, fields: {} }) as const
 
+/** Every service a test creates; locked before the temp folder is deleted (Windows cannot delete open files). */
+const opened: VaultService[] = []
+function track(s: VaultService): VaultService {
+  opened.push(s)
+  return s
+}
 let root: string
 let server: ReturnType<typeof localGitServer>
 
 async function service(name: string, secrets = new MemorySecretStore()) {
   mkdirSync(join(root, name, 'data'), { recursive: true })
-  return new VaultService({
+  return track(new VaultService({
     repoDir: join(root, name, 'repo'),
     dataDir: join(root, name, 'data'),
     kdf: await fastKdfParamsForTests(),
     http: server.http,
     secrets,
     allowedRemote: /^http:\/\/local\//
-  })
+  }))
 }
 
 async function unlocked(name = 'a') {
@@ -52,7 +58,10 @@ beforeEach(() => {
   execFileSync('git', ['init', '--bare', '-b', 'main', join(root, 'vault.git')], { stdio: 'ignore' })
   server = localGitServer(root, TOKEN)
 })
-afterEach(() => rmSync(root, { recursive: true, force: true }))
+afterEach(() => {
+  for (const s of opened.splice(0)) s.lock()
+  rmSync(root, { recursive: true, force: true, maxRetries: 5 })
+})
 
 describe('attachments', () => {
   it('stores files encrypted and reads them back', async () => {

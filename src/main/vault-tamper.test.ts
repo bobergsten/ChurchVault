@@ -18,12 +18,18 @@ const PW = 'anna-long-password'
 const login = (title: string) =>
   ({ type: 'login', title, tags: [], favorite: false, notes: '', attachments: [], fields: { url: 'u', username: 'x', password: 'p' } }) as const
 
+/** Every service a test creates; locked before the temp folder is deleted (Windows cannot delete open files). */
+const opened: VaultService[] = []
+function track(s: VaultService): VaultService {
+  opened.push(s)
+  return s
+}
 let root: string
 let server: ReturnType<typeof localGitServer>
 
 async function service(name: string, secrets = new MemorySecretStore()) {
   mkdirSync(join(root, name, 'data'), { recursive: true })
-  return new VaultService({ repoDir: join(root, name, 'repo'), dataDir: join(root, name, 'data'), kdf: await fastKdfParamsForTests(), http: server.http, secrets, allowedRemote: /^http:\/\/local\// })
+  return track(new VaultService({ repoDir: join(root, name, 'repo'), dataDir: join(root, name, 'data'), kdf: await fastKdfParamsForTests(), http: server.http, secrets, allowedRemote: /^http:\/\/local\// }))
 }
 const memberPath = (dev: string, id: string) => join(root, dev, 'repo', 'members', `${id}.json`)
 const readMember = (dev: string, id: string): MemberFile => JSON.parse(readFileSync(memberPath(dev, id), 'utf8')) as MemberFile
@@ -53,7 +59,10 @@ beforeEach(() => {
   execFileSync('git', ['init', '--bare', '-b', 'main', join(root, 'vault.git')], { stdio: 'ignore' })
   server = localGitServer(root, TOKEN)
 })
-afterEach(() => rmSync(root, { recursive: true, force: true }))
+afterEach(() => {
+  for (const s of opened.splice(0)) s.lock()
+  rmSync(root, { recursive: true, force: true, maxRetries: 5 })
+})
 
 describe('a planted vault key', () => {
   it('is refused on a computer that trusted the real key before', async () => {

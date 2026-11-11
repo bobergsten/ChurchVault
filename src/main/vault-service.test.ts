@@ -6,12 +6,18 @@ import { fastKdfParamsForTests } from './crypto'
 import { MemorySecretStore } from './secret-store'
 import { UserError, VaultService } from './vault-service'
 
+/** Every service a test creates; locked before the temp folder is deleted (Windows cannot delete open files). */
+const opened: VaultService[] = []
+function track(s: VaultService): VaultService {
+  opened.push(s)
+  return s
+}
 let dir: string
 let locked = 0
 const login = { type: 'login', title: 'Bank', tags: [], favorite: false, notes: '', attachments: [], fields: { url: 'u', username: 'x', password: 'p' } }
 
 async function service(idleMs = 0): Promise<VaultService> {
-  return new VaultService({ repoDir: join(dir, 'repo'), dataDir: join(dir, 'data'), kdf: await fastKdfParamsForTests(), idleMs, onLocked: () => locked++, http: {} as never, secrets: new MemorySecretStore() })
+  return track(new VaultService({ repoDir: join(dir, 'repo'), dataDir: join(dir, 'data'), kdf: await fastKdfParamsForTests(), idleMs, onLocked: () => locked++, http: {} as never, secrets: new MemorySecretStore() }))
 }
 
 beforeEach(async () => {
@@ -20,8 +26,9 @@ beforeEach(async () => {
   locked = 0
 })
 afterEach(async () => {
+  for (const s of opened.splice(0)) s.lock()
   vi.useRealTimers()
-  await rm(dir, { recursive: true, force: true })
+  await rm(dir, { recursive: true, force: true, maxRetries: 5 })
 })
 
 describe('VaultService', () => {
