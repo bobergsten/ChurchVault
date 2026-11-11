@@ -1,4 +1,8 @@
-import { clipboard, ipcMain, type IpcMainInvokeEvent, type WebContents } from 'electron'
+import { BrowserWindow, clipboard, dialog, ipcMain, shell, type IpcMainInvokeEvent, type WebContents } from 'electron'
+import { randomUUID } from 'node:crypto'
+import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { safeFileName } from './attachments'
 import type { EntryType } from '@shared/entry'
 import { ENTRY_TYPES } from '@shared/entry'
 import type { Result as IpcResult } from '@shared/api'
@@ -17,8 +21,22 @@ function asType(v: unknown): EntryType | undefined {
   return v as EntryType
 }
 
+/** Remove temporary decrypted copies made by "Open". Called when the vault locks, and on start and quit. */
+export async function cleanOpenDir(openDir: string): Promise<void> {
+  await rm(openDir, { recursive: true, force: true }).catch(() => undefined) // a file may still be open in another app
+}
+
 /** Register all IPC handlers. Only calls from `window` are accepted. */
-export function registerIpc(service: VaultService, window: () => WebContents | undefined, info: () => unknown): void {
+export function registerIpc(
+  service: VaultService,
+  window: () => WebContents | undefined,
+  info: () => unknown,
+  openDir: string
+): void {
+  const owner = (): BrowserWindow | undefined => {
+    const wc = window()
+    return wc ? (BrowserWindow.fromWebContents(wc) ?? undefined) : undefined
+  }
   let clipboardTimer: NodeJS.Timeout | undefined
 
   const handle = <T>(channel: string, fn: (...args: unknown[]) => T | Promise<T>): void => {
@@ -78,6 +96,42 @@ export function registerIpc(service: VaultService, window: () => WebContents | u
   handle('vault:recover', async (a) => {
     const x = (a ?? {}) as Record<string, unknown>
     await service.recoverAccess(asString(x.memberId, 'Member'), asString(x.recoveryKey, 'Recovery key'), asString(x.newPassword, 'Password'))
+  })
+  handle('attachments:pick', async () => {
+    const win = owner()
+    const opts = { title: 'Attach files', properties: ['openFile', 'multiSelections'] as Array<'openFile' | 'multiSelections'> }
+    const r = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts)
+    if (r.canceled) return []
+    const refs = []
+    for (const p of r.filePaths) refs.push(await service.addAttachmentFromPath(p))
+    return refs
+  })
+  handle('attachments:preview', (id) => service.previewAttachment(asString(id, 'Id')))
+  handle('attachments:save', async (id) => {
+    const { ref, data } = await service.readAttachment(asString(id, 'Id'))
+    try {
+      const win = owner()
+      const opts = { title: 'Save a decrypted copy', defaultPath: safeFileName(ref.name) }
+      const r = win ? await dialog.showSaveDialog(win, opts) : await dialog.showSaveDialog(opts)
+      if (r.canceled || !r.filePath) return false
+      await writeFile(r.filePath, data)
+      return true
+    } finally {
+      data.fill(0)
+    }
+  })
+  handle('attachments:open', async (id) => {
+    const { ref, data } = await service.readAttachment(asString(id, 'Id'))
+    try {
+      const dir = join(openDir, randomUUID())
+      await mkdir(dir, { recursive: true, mode: 0o700 })
+      const file = join(dir, safeFileName(ref.name))
+      await writeFile(file, data, { mode: 0o600 })
+      const err = await shell.openPath(file)
+      if (err) throw new UserError('open-failed', `No app could open ${ref.name}`)
+    } finally {
+      data.fill(0)
+    }
   })
   handle('sync:status', () => service.getSyncStatus())
   handle('sync:connect', (a) => {

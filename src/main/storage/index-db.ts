@@ -163,6 +163,14 @@ export class IndexDb {
     }))
   }
 
+  /** Every attachment id referenced by any entry (used before deleting blob files). */
+  referencedBlobIds(): Set<string> {
+    const rows = this.db.prepare('SELECT data FROM entries').all() as { data: string }[]
+    const ids = new Set<string>()
+    for (const r of rows) for (const a of (JSON.parse(r.data) as Entry).attachments) ids.add(a.id)
+    return ids
+  }
+
   clear(): void {
     this.db.exec('DELETE FROM entries; DELETE FROM entries_fts;')
   }

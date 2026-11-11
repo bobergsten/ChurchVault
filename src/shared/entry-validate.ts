@@ -1,7 +1,8 @@
-import { ENTRY_TYPES, FIELD_SPECS, type EntryInput, type EntryType } from './entry'
+import { ENTRY_ID_PATTERN, ENTRY_TYPES, FIELD_SPECS, type EntryInput, type EntryType } from './entry'
 
 const MAX_TEXT = 100_000
 const MAX_TAGS = 50
+export const MAX_ATTACHMENTS = 20
 
 function str(v: unknown, what: string): string {
   if (v === undefined || v === null || v === '') return ''
@@ -35,13 +36,17 @@ export function parseEntryInput(raw: unknown): EntryInput {
   }
 
   const attachments = Array.isArray(r.attachments) ? r.attachments : []
+  if (attachments.length > MAX_ATTACHMENTS) throw new Error(`At most ${MAX_ATTACHMENTS} attachments per entry`)
   const cleanAttachments = attachments.map((a) => {
     const x = a as Record<string, unknown>
-    if (typeof x?.id !== 'string' || typeof x.name !== 'string' || typeof x.size !== 'number' || typeof x.mime !== 'string') {
+    if (typeof x?.id !== 'string' || !ENTRY_ID_PATTERN.test(x.id) || typeof x.name !== 'string' || typeof x.size !== 'number' || typeof x.mime !== 'string') {
       throw new Error('Invalid attachment')
     }
-    return { id: x.id, name: x.name, size: x.size, mime: x.mime }
+    const name = x.name.trim().slice(0, 255)
+    if (!name) throw new Error('Attachment name is required')
+    return { id: x.id, name, size: x.size, mime: x.mime }
   })
+  if (new Set(cleanAttachments.map((a) => a.id)).size !== cleanAttachments.length) throw new Error('Duplicate attachment')
 
   return {
     type,

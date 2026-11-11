@@ -1,7 +1,7 @@
 // End-to-end check of the real app: create vault, add entries, search, lock, unlock.
 // Usage: npm run build && npm run e2e   (on Linux without a display: xvfb-run -a npm run e2e)
 import { _electron as electron } from 'playwright'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import assert from 'node:assert/strict'
@@ -62,6 +62,29 @@ try {
   await page.getByRole('button', { name: 'Show' }).click()
   await page.getByText('4711#').waitFor()
 
+  // Document with an attachment: the system dialogs are stubbed in the main process
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
+  const pngPath = join(userData, 'floorplan.png')
+  const savedPath = join(userData, 'saved-copy.png')
+  writeFileSync(pngPath, png)
+  await app.evaluate(({ dialog }, paths) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [paths.open] })
+    dialog.showSaveDialog = async () => ({ canceled: false, filePath: paths.save })
+  }, { open: pngPath, save: savedPath })
+  await page.getByRole('button', { name: '+ New' }).click()
+  await page.getByRole('button', { name: /Documents/ }).last().click()
+  await page.getByLabel('Title').fill('Church floor plan')
+  await page.getByRole('button', { name: 'Add files…' }).click()
+  await page.getByText('floorplan.png').waitFor()
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await page.getByRole('heading', { name: 'Church floor plan' }).waitFor()
+  await page.getByRole('button', { name: 'Preview' }).click()
+  await page.getByRole('dialog', { name: 'Preview of floorplan.png' }).getByRole('img').waitFor()
+  await page.getByRole('dialog', { name: 'Preview of floorplan.png' }).getByRole('button', { name: 'Close' }).click()
+  await page.getByRole('button', { name: 'Save a copy…' }).click()
+  await page.waitForTimeout(500)
+  assert.ok(readFileSync(savedPath).equals(png), 'saved copy matches the original')
+
   // Search: by title yes, by secret no
   await page.getByLabel('Search').fill('bank')
   await page.locator('.list li').filter({ hasText: 'Church bank' }).waitFor()
@@ -106,7 +129,7 @@ try {
   await page.getByLabel('Password').fill('recovered password 1')
   await page.getByRole('button', { name: 'Unlock' }).click()
   await page.locator('.list li').filter({ hasText: 'Church bank' }).waitFor()
-  assert.equal(await page.locator('.list li').count(), 2)
+  assert.equal(await page.locator('.list li').count(), 3)
   await page.screenshot({ path: process.env.E2E_SCREENSHOT ?? join(userData, 'shot.png') })
   console.log('e2e OK')
 } finally {

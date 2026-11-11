@@ -50,6 +50,12 @@ export class VaultSession {
     return s.crypto_kdf_derive_from_key(32, 1, 'sqlitedb', this.vaultKey)
   }
 
+  /** Separate key for attachments, so entries and blobs never share a key. */
+  async blobKey(): Promise<Uint8Array> {
+    const s = await getSodium()
+    return s.crypto_kdf_derive_from_key(32, 2, 'blobdata', this.vaultKey)
+  }
+
   close(): void {
     this.key?.fill(0)
     this.key = null

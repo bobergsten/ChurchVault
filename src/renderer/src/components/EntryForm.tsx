@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
-import { FIELD_SPECS, TYPE_LABELS, type Entry, type EntryInput, type EntryType } from '@shared/entry'
+import { FIELD_SPECS, TYPE_LABELS, type AttachmentRef, type Entry, type EntryInput, type EntryType } from '@shared/entry'
 import { api, errorMessage } from '../api'
+import { AttachmentEditor } from './Attachments'
 import { PasswordGenerator } from './PasswordGenerator'
 
 const SINGULAR: Record<EntryType, string> = { login: 'login', card: 'card', doorcode: 'door code', document: 'document', note: 'note' }
@@ -15,6 +16,7 @@ export function EntryForm({ type, entry, onSaved, onCancel }: {
   const [tags, setTags] = useState(entry?.tags.join(', ') ?? '')
   const [favorite, setFavorite] = useState(entry?.favorite ?? false)
   const [notes, setNotes] = useState(entry?.notes ?? '')
+  const [attachments, setAttachments] = useState<AttachmentRef[]>(entry?.attachments ?? [])
   const [fields, setFields] = useState<Record<string, string>>({ ...((entry?.fields as Record<string, string>) ?? {}) })
   const [shown, setShown] = useState<Record<string, boolean>>({})
   const [generatorFor, setGeneratorFor] = useState<string | null>(null)
@@ -29,7 +31,7 @@ export function EntryForm({ type, entry, onSaved, onCancel }: {
       const input = {
         type, title, favorite, notes, fields,
         tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
-        attachments: entry?.attachments ?? []
+        attachments
       } as EntryInput
       onSaved(await api.saveEntry({ id: entry?.id, input }))
     } catch (err) {
@@ -81,7 +83,7 @@ export function EntryForm({ type, entry, onSaved, onCancel }: {
       <label>Notes<textarea rows={4} value={notes} onChange={(e) => setNotes(e.target.value)} /></label>
       <label>Tags (comma separated)<input value={tags} onChange={(e) => setTags(e.target.value)} /></label>
       <label className="check"><input type="checkbox" checked={favorite} onChange={(e) => setFavorite(e.target.checked)} />Favorite</label>
-      {type === 'document' && <p className="hint">File attachments are coming in a later version. For now, use the notes field.</p>}
+      <AttachmentEditor value={attachments} onChange={setAttachments} />
       {error && <p className="error" role="alert">{error}</p>}
       <div className="row">
         <button className="primary" disabled={busy}>Save</button>

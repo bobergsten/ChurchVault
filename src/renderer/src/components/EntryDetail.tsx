@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { FIELD_SPECS, type Entry } from '@shared/entry'
 import { api } from '../api'
+import { AttachmentList } from './Attachments'
 
 const REVEAL_MS = 20_000
 
@@ -54,6 +55,7 @@ export function EntryDetail({ entry, onEdit, onDelete, onResolve }: {
       {FIELD_SPECS[entry.type].map((s) => (
         <Field key={s.key} label={s.label} value={fields[s.key] ?? ''} secret={s.secret} />
       ))}
+      <AttachmentList items={entry.attachments} />
       {entry.notes && <div className="field"><div className="label">Notes</div><div className="notes">{entry.notes}</div></div>}
       {entry.tags.length > 0 && <div className="tags">{entry.tags.map((t) => <span key={t} className="tag">{t}</span>)}</div>}
       <p className="hint">Last changed {new Date(entry.updatedAt).toLocaleString()} (revision {entry.rev})</p>

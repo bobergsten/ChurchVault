@@ -24,6 +24,10 @@ describe('parseEntryInput', () => {
     expect(() => parseEntryInput({ ...base, title: '  ' })).toThrow(/Title/)
     expect(() => parseEntryInput({ ...base, fields: { url: 5 } })).toThrow(/text/)
     expect(() => parseEntryInput({ ...base, attachments: [{ id: 1 }] })).toThrow(/attachment/)
+    const att = { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', name: 'a.pdf', size: 1, mime: 'application/pdf' }
+    expect(() => parseEntryInput({ ...base, attachments: [{ ...att, id: '../../x' }] })).toThrow(/attachment/)
+    expect(() => parseEntryInput({ ...base, attachments: [att, att] })).toThrow(/Duplicate/)
+    expect(() => parseEntryInput({ ...base, attachments: [{ ...att, name: ' ' }] })).toThrow(/name/)
     expect(() => parseEntryInput({ ...base, notes: 'x'.repeat(200_000) })).toThrow(/long/)
   })
 })

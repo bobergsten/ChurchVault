@@ -1,8 +1,8 @@
 import { app, BrowserWindow, powerMonitor, shell } from 'electron'
 import { join } from 'node:path'
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, rmSync } from 'node:fs'
 import http from 'isomorphic-git/http/node'
-import { registerIpc } from './ipc'
+import { cleanOpenDir, registerIpc } from './ipc'
 import { SafeStorageSecretStore } from './safe-storage'
 import { VaultService } from './vault-service'
 
@@ -60,6 +60,8 @@ if (!app.requestSingleInstanceLock()) {
     const repoDir = join(userData, 'vault-repo')
     const dataDir = join(userData, 'local')
     mkdirSync(dataDir, { recursive: true })
+    const openDir = join(dataDir, 'open')
+    void cleanOpenDir(openDir)
 
     const service = new VaultService({
       repoDir,
@@ -69,12 +71,23 @@ if (!app.requestSingleInstanceLock()) {
       secrets: new SafeStorageSecretStore(join(dataDir, 'secrets.json')),
       autoSync: true,
       onSyncStatus: (status) => mainWindow?.webContents.send('sync:status', status),
-      onLocked: () => mainWindow?.webContents.send('vault:locked')
+      onLocked: () => {
+        void cleanOpenDir(openDir)
+        mainWindow?.webContents.send('vault:locked')
+      }
     })
-    registerIpc(service, () => mainWindow?.webContents, () => ({ platform: process.platform, version: app.getVersion() }))
+    registerIpc(service, () => mainWindow?.webContents, () => ({ platform: process.platform, version: app.getVersion() }), openDir)
     powerMonitor.on('lock-screen', () => service.lock())
     powerMonitor.on('suspend', () => service.lock())
-    app.on('before-quit', () => service.lock())
+    app.on('before-quit', () => {
+      service.lock()
+      // Synchronous, so temporary decrypted copies are gone before the process exits.
+      try {
+        rmSync(openDir, { recursive: true, force: true })
+      } catch {
+        // a file may still be held open by another app
+      }
+    })
 
     createWindow()
     app.on('activate', () => {

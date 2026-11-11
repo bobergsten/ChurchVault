@@ -3,6 +3,11 @@
 export const ENTRY_TYPES = ['login', 'card', 'doorcode', 'document', 'note'] as const
 export type EntryType = (typeof ENTRY_TYPES)[number]
 
+export const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024
+
+/** What the app can show inside the window; anything else is opened or saved. */
+export type AttachmentPreview = { kind: 'image'; dataUrl: string } | { kind: 'text'; text: string } | { kind: 'none' }
+
 export interface AttachmentRef {
   /** blob id (file name under blobs/) */
   id: string

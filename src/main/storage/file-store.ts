@@ -5,6 +5,7 @@ import { ENTRY_ID_PATTERN } from '@shared/entry'
 import type { EntryEnvelope, MemberFile, VaultHeader } from '@shared/vault-format'
 
 const ENTRY_EXT = '.vault'
+const BLOB_EXT = '.bin'
 
 export function assertEntryId(id: string): void {
   if (!ENTRY_ID_PATTERN.test(id)) throw new Error(`Invalid entry id: ${id}`)
@@ -95,6 +96,32 @@ export class FileStore {
   async deleteEntry(id: string): Promise<void> {
     assertEntryId(id)
     await rm(this.path('entries', id + ENTRY_EXT), { force: true })
+  }
+
+  // Attachments: blobs/<uuid>.bin, already encrypted by the caller.
+  async listBlobIds(): Promise<string[]> {
+    return (await this.list('blobs', BLOB_EXT)).filter((n) => ENTRY_ID_PATTERN.test(n))
+  }
+  async readBlob(id: string): Promise<Uint8Array | null> {
+    assertEntryId(id)
+    try {
+      return new Uint8Array(await readFile(this.path('blobs', id + BLOB_EXT)))
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null
+      throw e
+    }
+  }
+  async writeBlob(id: string, bytes: Uint8Array): Promise<void> {
+    assertEntryId(id)
+    await this.init()
+    const file = this.path('blobs', id + BLOB_EXT)
+    const tmp = `${file}.${process.pid}.tmp`
+    await writeFile(tmp, bytes)
+    await rename(tmp, file)
+  }
+  async deleteBlob(id: string): Promise<void> {
+    assertEntryId(id)
+    await rm(this.path('blobs', id + BLOB_EXT), { force: true })
   }
 
   private async list(dir: string, ext: string): Promise<string[]> {

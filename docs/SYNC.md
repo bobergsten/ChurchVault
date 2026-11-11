@@ -1,6 +1,6 @@
 # Git sync (`src/main/sync`)
 
-Uses `isomorphic-git` (pure JS, no Git installation needed). The repository holds only `vault.json`, `members/*.json` and `entries/*.vault`: ciphertext and public keys.
+Uses `isomorphic-git` (pure JS, no Git installation needed). The repository holds only `vault.json`, `members/*.json`, `entries/*.vault` and `blobs/*.bin`: ciphertext and public keys. Attachments are never edited in place (a changed file is a new blob), so they cannot conflict.
 
 **Sign-in:** a fine-grained GitHub personal access token limited to the one repository (Contents: read and write). It is stored with the OS keychain (`safeStorage`) and sent only to `github.com`: the address is checked to be `https://github.com/<owner>/<repo>` before anything is stored or sent. (OAuth device flow would need a registered GitHub OAuth app; not done.)
 

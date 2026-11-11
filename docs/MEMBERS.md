@@ -10,7 +10,7 @@ Everyone is an admin: any member can approve or remove others.
 
 **Removing a member** (with access) changes the vault key:
 1. sync first and make a clean commit;
-2. re-encrypt every entry in memory under a new key (if any entry cannot be read, abort with nothing changed);
+2. re-encrypt every entry and attachment under a new key (if any cannot be read, abort with nothing changed);
 3. write entries, the remaining members' sealed keys and the new `vault.json`, delete the removed member; on failure, reset the working tree to the last commit;
 4. switch this computer to the new key (the local index is rebuilt, since its key derives from the vault key) and push at once;
 5. show a **new recovery key**; the old one no longer works.
@@ -22,5 +22,3 @@ What removal cannot do: the removed person may have copied secrets they could al
 **Forgotten password:** "Forgot password?" on the unlock screen. The printed recovery key opens the vault, and the member gets a fresh keypair and new password (same id and name, so entries still show who edited them). Anyone holding the recovery key can do this for any member, so keep it in a safe place. Another option is that a different member simply removes and re-invites the person.
 
 **Changing a password** only re-wraps the member's own secret key; entries are untouched.
-
-TODO (milestone 7): attachment blobs must be re-encrypted during key rotation.

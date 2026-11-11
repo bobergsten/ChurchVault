@@ -1,7 +1,8 @@
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
+import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { basename, join } from 'node:path'
 import type { HttpClient } from 'isomorphic-git'
-import type { Entry } from '@shared/entry'
+import { MAX_ATTACHMENT_BYTES, type AttachmentPreview, type AttachmentRef, type Entry, type EntryInput } from '@shared/entry'
 import { parseEntryInput } from '@shared/entry-validate'
 import type { EntrySummary, MemberInfo, MemberSummary, SyncStatus, VaultState } from '@shared/api'
 import type { KdfParams, MemberFile } from '@shared/vault-format'
@@ -10,7 +11,10 @@ import {
   changePassword,
   createMemberIdentity,
   createVault,
+  decryptBlob,
   decryptEntry,
+  encryptBlob,
+  rekeyBlob,
   fingerprint,
   grantAccess,
   rekeyEntry,
@@ -20,6 +24,7 @@ import {
   unlockWithRecoveryKey,
   type VaultSession
 } from './crypto'
+import { mimeFor, previewFor } from './attachments'
 import type { SecretStore } from './secret-store'
 import { EntryRepository, FileStore, IndexDb } from './storage'
 import { GitSync, SyncError } from './sync/git-sync'
@@ -66,6 +71,8 @@ interface Unlocked {
   repo: EntryRepository
   me: MemberSummary
   vaultId: string
+  /** Attachments added in an editor but not saved yet: encrypted, in memory only. */
+  staged: Map<string, { ref: AttachmentRef; bytes: Uint8Array }>
 }
 
 const MIN_PASSWORD = 10
@@ -169,7 +176,7 @@ export class VaultService {
   private async start(vaultId: string, member: MemberFile, session: VaultSession): Promise<{ unreadable: number }> {
     const index = IndexDb.open(join(this.opts.dataDir, `index-${vaultId}.db`), await session.sqliteKey())
     const repo = new EntryRepository(session, this.files, index, member.id)
-    this.open = { session, index, repo, me: { id: member.id, name: member.name }, vaultId }
+    this.open = { session, index, repo, me: { id: member.id, name: member.name }, vaultId, staged: new Map() }
     const report = await repo.rebuild()
     this.touch()
     this.remoteUrl = (await this.git.isRepo()) ? await this.git.remoteUrl() : null
@@ -187,6 +194,7 @@ export class VaultService {
     const o = this.open
     if (!o) return
     this.open = null
+    o.staged.clear()
     o.index.close()
     o.session.close()
     this.opts.onLocked?.()
@@ -215,30 +223,123 @@ export class VaultService {
   }
 
   async save(id: string | undefined, rawInput: unknown): Promise<Entry> {
-    const { repo } = this.unlocked()
-    let input
+    const o = this.unlocked()
+    let input: EntryInput
     try {
       input = parseEntryInput(rawInput)
     } catch (e) {
       throw new UserError('invalid', (e as Error).message)
     }
-    const entry = id ? await repo.update(id, input) : await repo.create(input)
+    const current = id ? o.repo.get(id) : null
+    if (id && !current) throw new UserError('not-found', 'Entry not found')
+
+    // Attachments must be either freshly added (staged) or already on this entry. Size and type
+    // come from what we stored, never from the renderer; only the display name may change.
+    const known = new Map((current?.attachments ?? []).map((a) => [a.id, a]))
+    const toWrite: { id: string; bytes: Uint8Array }[] = []
+    input.attachments = input.attachments.map((a) => {
+      const staged = o.staged.get(a.id)
+      if (staged) {
+        toWrite.push({ id: a.id, bytes: staged.bytes })
+        return { ...staged.ref, name: a.name }
+      }
+      const existing = known.get(a.id)
+      if (!existing) throw new UserError('invalid', 'Unknown attachment')
+      return { ...existing, name: a.name }
+    })
+
+    // Blob files first, so a saved entry never points to a missing file.
+    for (const b of toWrite) await this.files.writeBlob(b.id, b.bytes)
+    const entry = id ? await o.repo.update(id, input) : await o.repo.create(input)
+    for (const b of toWrite) o.staged.delete(b.id)
+    await this.collectBlobs((current?.attachments ?? []).map((a) => a.id))
     await this.afterChange()
     return entry
   }
 
   async delete(id: string): Promise<void> {
-    await this.unlocked().repo.delete(id)
+    const { repo } = this.unlocked()
+    const before = repo.get(id)
+    await repo.delete(id)
+    await this.collectBlobs(before?.attachments.map((a) => a.id) ?? [])
     await this.afterChange()
   }
 
   async resolveConflict(id: string, keepCopy: boolean): Promise<void> {
+    const { repo } = this.unlocked()
+    const copy = repo.get(id)
+    const original = copy?.conflictOf ? repo.get(copy.conflictOf) : null
     try {
-      await this.unlocked().repo.resolveConflict(id, keepCopy)
+      await repo.resolveConflict(id, keepCopy)
     } catch (e) {
       throw new UserError('invalid', (e as Error).message)
     }
+    await this.collectBlobs([...(copy?.attachments ?? []), ...(original?.attachments ?? [])].map((a) => a.id))
     await this.afterChange()
+  }
+
+  /** Delete those blob files that no entry references any more (copies from conflicts can share blobs). */
+  private async collectBlobs(candidates: string[]): Promise<void> {
+    if (candidates.length === 0) return
+    const used = this.unlocked().index.referencedBlobIds()
+    for (const id of candidates) if (!used.has(id)) await this.files.deleteBlob(id)
+  }
+
+  // ---- Attachments ---------------------------------------------------------
+
+  /** Encrypt a file into memory; it becomes part of the vault when the entry is saved. */
+  async addAttachment(name: string, data: Uint8Array, mime = mimeFor(name)): Promise<AttachmentRef> {
+    const o = this.unlocked()
+    if (data.length > MAX_ATTACHMENT_BYTES) {
+      throw new UserError('too-large', `${name} is larger than ${MAX_ATTACHMENT_BYTES / 1024 / 1024} MB`)
+    }
+    const ref: AttachmentRef = { id: randomUUID(), name: basename(name), size: data.length, mime }
+    o.staged.set(ref.id, { ref, bytes: await encryptBlob(o.session, ref.id, data) })
+    return ref
+  }
+
+  async addAttachmentFromPath(path: string): Promise<AttachmentRef> {
+    this.unlocked()
+    const info = await stat(path)
+    if (!info.isFile()) throw new UserError('invalid', 'Not a file')
+    if (info.size > MAX_ATTACHMENT_BYTES) {
+      throw new UserError('too-large', `${basename(path)} is larger than ${MAX_ATTACHMENT_BYTES / 1024 / 1024} MB`)
+    }
+    const data = new Uint8Array(await readFile(path))
+    try {
+      return await this.addAttachment(basename(path), data)
+    } finally {
+      data.fill(0)
+    }
+  }
+
+  /** Decrypted content of a staged attachment or one referenced by an entry. */
+  async readAttachment(id: string): Promise<{ ref: AttachmentRef; data: Uint8Array }> {
+    const o = this.unlocked()
+    const staged = o.staged.get(id)
+    if (staged) return { ref: staged.ref, data: await decryptBlob(o.session, id, staged.bytes) }
+    const ref = o.repo
+      .list()
+      .map((r) => o.repo.get(r.id))
+      .flatMap((e) => e?.attachments ?? [])
+      .find((a) => a.id === id)
+    if (!ref) throw new UserError('not-found', 'Attachment not found')
+    const bytes = await this.files.readBlob(id)
+    if (!bytes) throw new UserError('missing', `The file for ${ref.name} is missing (not synced yet?)`)
+    try {
+      return { ref, data: await decryptBlob(o.session, id, bytes) }
+    } catch (e) {
+      throw new UserError(e instanceof VaultError ? e.code : 'unreadable', `${ref.name} cannot be read`)
+    }
+  }
+
+  async previewAttachment(id: string): Promise<AttachmentPreview> {
+    const { ref, data } = await this.readAttachment(id)
+    try {
+      return previewFor(ref.mime, data)
+    } finally {
+      data.fill(0)
+    }
   }
 
 
@@ -365,13 +466,38 @@ export class VaultService {
         unreadable++
       }
     }
+    // Attachments are re-encrypted one at a time into a scratch folder to keep memory use low.
+    // Blob files no entry references are dropped instead.
+    const scratch = join(this.opts.dataDir, 'rotation')
+    await rm(scratch, { recursive: true, force: true })
+    await mkdir(scratch, { recursive: true })
+    const used = o.index.referencedBlobIds()
+    const blobs: string[] = []
+    const orphans: string[] = []
+    for (const blobId of await this.files.listBlobIds()) {
+      if (!used.has(blobId)) {
+        orphans.push(blobId)
+        continue
+      }
+      const bytes = await this.files.readBlob(blobId)
+      try {
+        await writeFile(join(scratch, blobId), await rekeyBlob(o.session, rotation.session, blobId, bytes!))
+        blobs.push(blobId)
+      } catch {
+        unreadable++
+      }
+    }
     if (unreadable > 0) {
       rotation.session.close()
-      throw new UserError('rotation-blocked', `${unreadable} entries cannot be read, so the key cannot be changed safely. Sync and try again.`)
+      await rm(scratch, { recursive: true, force: true })
+      throw new UserError('rotation-blocked', `${unreadable} entries or attachments cannot be read, so the key cannot be changed safely. Sync and try again.`)
     }
+    o.staged.clear() // unsaved attachments were encrypted with the old key
 
-    // 2. Write it all (TODO milestone 7: re-encrypt attachment blobs here as well).
+    // 2. Write it all.
     try {
+      for (const blobId of blobs) await this.files.writeBlob(blobId, new Uint8Array(await readFile(join(scratch, blobId))))
+      for (const blobId of orphans) await this.files.deleteBlob(blobId)
       for (const r of rekeyed) await this.files.writeEntry(r.id, r.envelope)
       for (const m of rotation.members) await this.files.writeMember(m)
       await this.files.deleteMember(id)
@@ -380,6 +506,8 @@ export class VaultService {
       rotation.session.close()
       await this.git.discardUncommitted()
       throw e
+    } finally {
+      await rm(scratch, { recursive: true, force: true })
     }
 
     // 3. Switch this computer to the new key. The index is keyed from the vault key, so it starts over.

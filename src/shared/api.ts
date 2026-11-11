@@ -1,4 +1,4 @@
-import type { Entry, EntryInput, EntryType } from './entry'
+import type { AttachmentPreview, AttachmentRef, Entry, EntryInput, EntryType } from './entry'
 
 export interface AppInfo {
   platform: string
@@ -83,6 +83,13 @@ export interface VaultApi {
   changePassword(args: { oldPassword: string; newPassword: string }): Promise<void>
   /** Forgotten password: reset one's own access using the printed recovery key, then unlock. */
   recoverAccess(args: { memberId: string; recoveryKey: string; newPassword: string }): Promise<void>
+  /** Choose files with the system dialog; they are encrypted and kept until the entry is saved. */
+  pickAttachments(): Promise<AttachmentRef[]>
+  previewAttachment(id: string): Promise<AttachmentPreview>
+  /** Save a decrypted copy where the user chooses. Resolves false if cancelled. */
+  saveAttachment(id: string): Promise<boolean>
+  /** Open with the default app via a temporary decrypted copy that is deleted when the vault locks. */
+  openAttachment(id: string): Promise<void>
   getSyncStatus(): Promise<SyncStatus>
   /** Connect this vault to a GitHub repository and run the first sync. The token is stored in the OS keychain. */
   connectRemote(args: { url: string; token: string }): Promise<SyncStatus>
