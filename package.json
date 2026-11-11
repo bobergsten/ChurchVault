@@ -1,7 +1,13 @@
 {
   "name": "churchvault",
   "version": "0.1.0",
-  "description": "Encrypted shared vault for church secrets, synced through Git",
+  "description": "Shared, encrypted vault for a church: passwords, cards, door codes and documents, synced through a private GitHub repository",
+  "author": "ChurchVault contributors",
+  "homepage": "https://github.com/bobergsten/ChurchVault",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bobergsten/ChurchVault.git"
+  },
   "main": "./out/main/index.js",
   "private": true,
   "type": "module",
@@ -14,7 +20,15 @@
     "lint": "eslint .",
     "test": "vitest run",
     "e2e": "node e2e/smoke.mjs",
-    "dist": "npm run build && electron-builder"
+    "dist": "npm run build && electron-builder --publish never"
+  },
+  "dependencies": {
+    "better-sqlite3-multiple-ciphers": "^13.0.3",
+    "electron-updater": "^6.8.11",
+    "isomorphic-git": "^1.44.13",
+    "libsodium-wrappers-sumo": "^0.8.4",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -32,12 +46,5 @@
     "typescript-eslint": "^8.72.2",
     "vite": "^8.3.8",
     "vitest": "^5.1.0"
-  },
-  "dependencies": {
-    "better-sqlite3-multiple-ciphers": "^13.0.3",
-    "isomorphic-git": "^1.44.13",
-    "libsodium-wrappers-sumo": "^0.8.4",
-    "react": "^19.3.1",
-    "react-dom": "^19.3.1"
   }
 }

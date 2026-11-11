@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { VaultState } from '@shared/api'
 import { api } from './api'
 import { Pending } from './components/Pending'
+import { UpdateBanner } from './components/UpdateBanner'
 import { Welcome } from './components/Welcome'
 import { Unlock } from './components/Unlock'
 import { VaultView } from './components/VaultView'
@@ -31,8 +32,15 @@ export function App() {
   }, [])
 
   if (!state) return null
-  if (state.status === 'no-vault') return <Welcome onDone={refresh} />
-  if (state.status === 'pending') return <Pending member={state.member} fingerprint={state.fingerprint} onChange={refresh} />
-  if (state.status === 'locked') return <Unlock members={state.members} onUnlocked={refresh} />
-  return <VaultView me={state.me} onLock={() => void api.lock().then(refresh)} />
+  let screen
+  if (state.status === 'no-vault') screen = <Welcome onDone={refresh} />
+  else if (state.status === 'pending') screen = <Pending member={state.member} fingerprint={state.fingerprint} onChange={refresh} />
+  else if (state.status === 'locked') screen = <Unlock members={state.members} onUnlocked={refresh} />
+  else screen = <VaultView me={state.me} onLock={() => void api.lock().then(refresh)} />
+  return (
+    <div className="shell">
+      <UpdateBanner />
+      <div className="screen">{screen}</div>
+    </div>
+  )
 }

@@ -25,9 +25,18 @@ const api = {
   previewAttachment: (id) => call('attachments:preview', id),
   saveAttachment: (id) => call('attachments:save', id),
   openAttachment: (id) => call('attachments:open', id),
+  getUpdateStatus: () => call('update:status'),
+  onUpdateStatus: (cb) => {
+    const listener = (_e: unknown, status: Parameters<typeof cb>[0]): void => cb(status)
+    ipcRenderer.on('update:status', listener)
+    return () => ipcRenderer.removeListener('update:status', listener)
+  },
+  installUpdate: () => call('update:install'),
+  openUpdatePage: () => call('update:openPage'),
   getSyncStatus: () => call('sync:status'),
   connectRemote: (args) => call('sync:connect', args),
   syncNow: () => call('sync:now'),
+  updateToken: (token) => call('sync:updateToken', token),
   disconnectRemote: () => call('sync:disconnect'),
   resolveConflict: (args) => call('entries:resolveConflict', args),
   onSyncStatus: (cb) => {

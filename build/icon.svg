@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3b6fe0"/>
+      <stop offset="1" stop-color="#1f3f99"/>
+    </linearGradient>
+    <linearGradient id="shield" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e3eafb"/>
+    </linearGradient>
+  </defs>
+  <!-- macOS-style rounded square with margin -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)"/>
+  <!-- small cross above the shield -->
+  <rect x="491" y="178" width="42" height="132" rx="10" fill="#ffffff"/>
+  <rect x="452" y="214" width="120" height="40" rx="10" fill="#ffffff"/>
+  <!-- shield -->
+  <path d="M512 300 L742 378 V560 C742 700 640 790 512 836 C384 790 282 700 282 560 V378 Z" fill="url(#shield)"/>
+  <!-- keyhole -->
+  <circle cx="512" cy="540" r="58" fill="#1f3f99"/>
+  <path d="M484 580 L540 580 L560 712 L464 712 Z" fill="#1f3f99"/>
+</svg>

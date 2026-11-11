@@ -5,6 +5,7 @@ import http from 'isomorphic-git/http/node'
 import { APP_ORIGIN, handleAppScheme, registerAppScheme } from './app-protocol'
 import { clearClipboardIfOurs, cleanOpenDir, registerIpc } from './ipc'
 import { SafeStorageSecretStore } from './safe-storage'
+import { startUpdater } from './updater'
 import { VaultService } from './vault-service'
 
 const IDLE_LOCK_MS = 5 * 60 * 1000
@@ -110,7 +111,9 @@ if (!app.requestSingleInstanceLock()) {
         mainWindow?.webContents.send('vault:locked')
       }
     })
+    const updater = startUpdater((status) => mainWindow?.webContents.send('update:status', status))
     registerIpc(service, {
+      updater,
       window: () => mainWindow?.webContents,
       info: () => ({ platform: process.platform, version: app.getVersion() }),
       openDir,

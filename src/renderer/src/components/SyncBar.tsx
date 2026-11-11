@@ -50,9 +50,47 @@ function ConnectDialog({ onClose }: { onClose: () => void }) {
   )
 }
 
+function TokenDialog({ onClose }: { onClose: () => void }) {
+  const [token, setToken] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function submit(e: FormEvent) {
+    e.preventDefault()
+    setError('')
+    setBusy(true)
+    try {
+      await api.updateToken(token)
+      onClose()
+    } catch (err) {
+      setError(errorMessage(err))
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="overlay" role="dialog" aria-label="Update GitHub token">
+      <form className="card" onSubmit={(e) => void submit(e)}>
+        <h1>Update the GitHub token</h1>
+        <p className="hint">
+          GitHub tokens expire. On github.com go to Settings → Developer settings → Fine-grained tokens, regenerate
+          yours (or create a new one: only the vault repository, Contents: Read and write) and paste it here.
+        </p>
+        <label>New access token<input type="password" value={token} onChange={(e) => setToken(e.target.value)} autoComplete="off" autoFocus /></label>
+        {error && <p className="error" role="alert">{error}</p>}
+        <div className="row">
+          <button className="primary" disabled={busy || !token}>{busy ? 'Checking…' : 'Save token'}</button>
+          <button type="button" onClick={onClose}>Cancel</button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
 export function SyncBar({ onSynced }: { onSynced: () => void }) {
   const [status, setStatus] = useState<SyncStatus | null>(null)
   const [dialog, setDialog] = useState(false)
+  const [tokenDialog, setTokenDialog] = useState(false)
   const [, tick] = useState(0)
 
   useEffect(() => {
@@ -80,11 +118,13 @@ export function SyncBar({ onSynced }: { onSynced: () => void }) {
             : status.lastError
               ? <span className="error" title={status.lastError.message}>⚠ {status.lastError.message}</span>
               : <>Synced {ago(status.lastSyncAt)}</>}
+          {status.lastError?.code === 'auth' && <button onClick={() => setTokenDialog(true)}>Update token</button>}
           <button disabled={status.syncing} onClick={() => void api.syncNow().then(setStatus).catch(() => undefined)}>Sync now</button>
           <button className="linklike" onClick={() => { if (window.confirm('Stop syncing with GitHub on this computer? Your data stays here and on GitHub.')) void api.disconnectRemote().then(setStatus) }}>Disconnect</button>
         </span>
       )}
       {dialog && <ConnectDialog onClose={() => setDialog(false)} />}
+      {tokenDialog && <TokenDialog onClose={() => setTokenDialog(false)} />}
     </>
   )
 }

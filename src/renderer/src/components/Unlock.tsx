@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import type { MemberSummary } from '@shared/api'
 import { api, errorMessage } from '../api'
 import { Recover } from './Recover'
@@ -9,6 +9,8 @@ export function Unlock({ members, onUnlocked }: { members: MemberSummary[]; onUn
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [recovering, setRecovering] = useState(false)
+  const [version, setVersion] = useState('')
+  useEffect(() => void api.getInfo().then((i) => setVersion(i.version)), [])
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -45,6 +47,7 @@ export function Unlock({ members, onUnlocked }: { members: MemberSummary[]; onUn
         {error && <p className="error" role="alert">{error}</p>}
         <button className="primary" disabled={busy || !pw}>{busy ? 'Unlocking…' : 'Unlock'}</button>
         <button type="button" className="linklike" onClick={() => setRecovering(true)}>Forgot password?</button>
+        {version && <p className="hint version">Version {version}</p>}
       </form>
     </div>
   )

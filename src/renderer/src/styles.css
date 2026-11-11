@@ -63,3 +63,6 @@ main { overflow: auto; }
 .card.preview { max-width: min(900px, 92vw); max-height: 90vh; overflow: auto; gap: 10px; }
 .card.preview img { max-width: 100%; height: auto; }
 .card.preview pre { white-space: pre-wrap; word-break: break-word; margin: 0; }
+
+.shell { height: 100%; display: flex; flex-direction: column; } .screen { flex: 1; min-height: 0; }
+.update-banner { display: flex; gap: 10px; align-items: center; justify-content: center; padding: 6px 12px; background: var(--sel); border-bottom: 1px solid var(--line); font-size: 13px; }

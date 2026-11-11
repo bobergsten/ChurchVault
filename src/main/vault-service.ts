@@ -748,6 +748,22 @@ export class VaultService {
     }
   }
 
+  /** Replace the GitHub token (e.g. it expired). The old one is kept if the new one does not work. */
+  async updateToken(token: string): Promise<SyncStatus> {
+    this.unlocked()
+    token = token.trim()
+    if (!this.remoteUrl) throw new UserError('no-remote', 'GitHub is not set up yet')
+    if (!token) throw new UserError('invalid', 'Enter the access token')
+    const previous = await this.opts.secrets.get(TOKEN_KEY)
+    await this.opts.secrets.set(TOKEN_KEY, token)
+    const status = await this.syncNow()
+    if (status.lastError?.code === 'auth') {
+      if (previous) await this.opts.secrets.set(TOKEN_KEY, previous)
+      throw new UserError('auth', status.lastError.message)
+    }
+    return status
+  }
+
   async disconnectRemote(): Promise<SyncStatus> {
     this.unlocked()
     await this.dropRemote()

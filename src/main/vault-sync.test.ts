@@ -89,6 +89,20 @@ describe('connecting a remote', () => {
     expect(a.list({})).toHaveLength(1)
   })
 
+  it('replaces an expired token, keeping the old one if the new one fails', async () => {
+    const a = await service('a')
+    await a.createVault('Anna', PW)
+    await unlockFirst(a)
+    await expect(a.updateToken('x')).rejects.toMatchObject({ code: 'no-remote' })
+    await a.connectRemote(URL, TOKEN)
+    await expect(a.updateToken('wrong')).rejects.toMatchObject({ code: 'auth' })
+    expect(await a.secrets.get('github-token')).toBe(TOKEN)
+    expect(a.getSyncStatus().configured).toBe(true)
+    await a.secrets.set('github-token', 'expired')
+    expect((await a.syncNow()).lastError).toMatchObject({ code: 'auth' })
+    expect((await a.updateToken(TOKEN)).lastError).toBeNull()
+  })
+
   it('can be disconnected', async () => {
     const a = await service('a')
     await a.createVault('Anna', PW)

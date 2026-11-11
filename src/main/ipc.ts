@@ -51,12 +51,13 @@ export interface IpcOptions {
   window: () => WebContents | undefined
   info: () => unknown
   openDir: string
+  updater: { status: () => unknown; install: (beforeQuit: () => void) => void; openDownloadPage: () => void }
   /** Origin of our own page; calls from any other frame are refused. */
   origin: string
 }
 
 /** Register all IPC handlers. Only calls from our window's own page are accepted. */
-export function registerIpc(service: VaultService, { window, info, openDir, origin }: IpcOptions): void {
+export function registerIpc(service: VaultService, { window, info, openDir, origin, updater }: IpcOptions): void {
   const trusted = (event: { sender: WebContents; senderFrame?: { url: string; parent: unknown } | null }): boolean => {
     const frame = event.senderFrame
     return event.sender === window() && !!frame && frame.parent === null && (frame.url === origin || frame.url.startsWith(origin + '/'))
@@ -81,6 +82,14 @@ export function registerIpc(service: VaultService, { window, info, openDir, orig
   }
 
   handle('app:info', () => info())
+  handle('update:status', () => updater.status())
+  handle('update:install', () =>
+    updater.install(() => {
+      service.lock()
+      void clearClipboardIfOurs()
+    })
+  )
+  handle('update:openPage', () => updater.openDownloadPage())
   handle('vault:state', () => service.getState())
   handle('vault:create', (a) => {
     const x = a as { name?: unknown; password?: unknown }
@@ -170,6 +179,7 @@ export function registerIpc(service: VaultService, { window, info, openDir, orig
     return service.connectRemote(asString(x.url, 'Address'), asString(x.token, 'Token'))
   })
   handle('sync:now', () => service.syncNow())
+  handle('sync:updateToken', (t) => service.updateToken(asString(t, 'Token')))
   handle('sync:disconnect', () => service.disconnectRemote())
   handle('entries:resolveConflict', (a) => {
     const x = (a ?? {}) as { id?: unknown; keepCopy?: unknown }

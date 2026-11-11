@@ -48,6 +48,15 @@ export interface SyncStatus {
   lastError: { code: string; message: string } | null
 }
 
+export type UpdateStatus =
+  | { state: 'none' }
+  /** macOS: a newer version exists; the user downloads it from GitHub */
+  | { state: 'available'; version: string }
+  /** Windows: being downloaded in the background */
+  | { state: 'downloading'; version: string }
+  /** Windows: ready, installed on restart */
+  | { state: 'downloaded'; version: string }
+
 /** Error thrown in the renderer for a failed call. `code` is stable, `message` is user-presentable. */
 export class ApiError extends Error {
   constructor(
@@ -92,10 +101,18 @@ export interface VaultApi {
   saveAttachment(id: string): Promise<boolean>
   /** Open with the default app via a temporary decrypted copy that is deleted when the vault locks. */
   openAttachment(id: string): Promise<void>
+  getUpdateStatus(): Promise<UpdateStatus>
+  onUpdateStatus(cb: (s: UpdateStatus) => void): () => void
+  /** Windows: restart now to install a downloaded update (locks the vault first). */
+  installUpdate(): Promise<void>
+  /** Open the releases page in the browser. */
+  openUpdatePage(): Promise<void>
   getSyncStatus(): Promise<SyncStatus>
   /** Connect this vault to a GitHub repository and run the first sync. The token is stored in the OS keychain. */
   connectRemote(args: { url: string; token: string }): Promise<SyncStatus>
   syncNow(): Promise<SyncStatus>
+  /** Replace the stored GitHub token (it expired or was revoked). */
+  updateToken(token: string): Promise<SyncStatus>
   disconnectRemote(): Promise<SyncStatus>
   /** Resolve an edit conflict: keep the preserved copy (replacing the original) or discard it. */
   resolveConflict(args: { id: string; keepCopy: boolean }): Promise<void>

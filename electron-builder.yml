@@ -1,24 +1,52 @@
 appId: org.churchvault.app
 productName: ChurchVault
+copyright: Copyright © 2026 ChurchVault contributors
 directories:
   output: dist
+  buildResources: build # icon.png (1024x1024) -> .icns / .ico
 files:
   - out/**
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+
 mac:
-  target: dmg
-  identity: null   # unsigned for now
+  category: public.app-category.productivity
+  identity: null # unsigned for now (see docs/INSTALL.md for opening it the first time)
+  target:
+    - target: dmg
+      arch: [arm64, x64] # Apple Silicon and Intel Macs
+    - target: zip # only so the app can detect new versions (latest-mac.yml)
+      arch: [arm64, x64]
+
 win:
-  target: nsis
+  target:
+    - target: nsis
+      arch: [x64] # also runs on Windows on ARM (emulated)
+
+nsis:
+  oneClick: false
+  perMachine: false # installs for the current user: no administrator rights needed
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  deleteAppDataOnUninstall: false # never delete the local vault copy by uninstalling
+
+# Releases and updates: GitHub Releases of this (public) code repository, never the vault repository.
+publish:
+  provider: github
+  owner: bobergsten
+  repo: ChurchVault
+  releaseType: draft # a person reviews and publishes each release
+
 asarUnpack:
-  - "**/*.node"   # native modules (SQLCipher) cannot load from inside the asar archive
+  - "**/*.node" # native modules (SQLCipher) cannot load from inside the asar archive
 npmRebuild: false # SQLCipher ships N-API prebuilds that work in Node and Electron unchanged
+
 # Electron fuses: switch off ways to run arbitrary code inside the app's process.
 electronFuses:
-  runAsNode: false                            # ELECTRON_RUN_AS_NODE ignored
+  runAsNode: false # ELECTRON_RUN_AS_NODE ignored
   enableNodeOptionsEnvironmentVariable: false # NODE_OPTIONS ignored
-  enableNodeCliInspectArguments: false        # --inspect / debugger attach refused
+  enableNodeCliInspectArguments: false # --inspect / debugger attach refused
   enableCookieEncryption: true
-  onlyLoadAppFromAsar: true                   # cannot swap in an unpacked app folder
+  onlyLoadAppFromAsar: true # cannot swap in an unpacked app folder
   enableEmbeddedAsarIntegrityValidation: true # app.asar contents are checked (macOS, Windows)
-  grantFileProtocolExtraPrivileges: false     # UI is served from app://, not file://
-  resetAdHocDarwinSignature: true             # keep the unsigned macOS build launchable on Apple Silicon
+  grantFileProtocolExtraPrivileges: false # UI is served from app://, not file://
+  resetAdHocDarwinSignature: true # keep the unsigned macOS build launchable on Apple Silicon
