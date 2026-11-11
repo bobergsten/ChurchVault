@@ -80,6 +80,17 @@ jobs:
           elif [ "$drafts" -eq 1 ]; then
             echo "Reusing the existing draft release for $tag."
           else
+            # A tag pushed a moment ago can take a few seconds to show up in GitHub's API,
+            # and --verify-tag asks the API. Wait for it rather than fail the release.
+            for attempt in $(seq 1 30); do
+              if gh api "repos/$GH_REPO/git/ref/tags/$tag" >/dev/null 2>&1; then break; fi
+              if [ "$attempt" -eq 30 ]; then
+                echo "::error::$tag was pushed but GitHub's API still does not show it after 60 s."
+                exit 1
+              fi
+              echo "Waiting for GitHub to see $tag ($attempt)..."
+              sleep 2
+            done
             gh release create "$tag" --draft --verify-tag --title "${tag#v}" \
               --notes "ChurchVault ${tag#v}. Installation guide: docs/INSTALL.md"
           fi
