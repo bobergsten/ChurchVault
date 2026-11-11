@@ -53,8 +53,8 @@ blobs/<uuid>.bin           # encrypted attachments (chunked)
 4. **Adding a member (admin):** the admin enters the new member's public key (the new member generates it on first launch and sends it over), seals the vault key to it, commits the file, and adds the person's GitHub account as a repo collaborator.
 5. **Removing a member (admin):** revoke GitHub access, then **rotate the vault key**: generate a new key, re-encrypt all entries and blobs, re-seal to the remaining members. Caveat: a removed member may have kept old copies, so the actual secrets they knew (passwords, codes) should also be changed. The app shows a checklist for this.
 6. **Changing your password** only rewraps your private key; no re-encryption.
-7. **Recovery:** at setup an admin prints a recovery key that can unlock the vault. Two admins are recommended so that one lost password is not fatal. Losing all passwords and the recovery key means losing the data.
-8. **Roles:** `admin` (manage members, rotate keys) and `member` (read/write entries). A read-only role is possible later.
+7. **Recovery:** at setup an admin prints a recovery key that can unlock the vault. Since everyone is an admin, any other member can re-add someone who lost their password. Losing all passwords and the recovery key means losing the data.
+8. **Roles:** every member is an admin (read/write entries, add/remove members, rotate keys). Because any member can remove another, member removal asks for confirmation. A read-only role is possible later.
 9. **Audit:** Git history shows who changed what and when (commit author = member). Commits are not cryptographically signed in v1.
 
 ## 5. Data model
@@ -116,7 +116,7 @@ Common fields: `id`, `type`, `title`, `tags`, `favorite`, `notes`, `attachments[
 | Merge conflicts on shared entries | Keep-both conflict UI, per-entry files |
 | Repo accidentally made public | Setup check that the repo is private; ciphertext only regardless |
 
-## 11. Open questions
+## 11. Decisions
 
-- Should all 3-4 members be admins, or one admin and the rest members?
-- Is a single shared vault enough for v1, or is "Finance only" separation needed from day one?
+- All 3-4 members are admins.
+- One shared vault for v1; collections with separate keys stay in "Later".
