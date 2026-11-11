@@ -10,8 +10,18 @@ export interface MemberSummary {
   name: string
 }
 
+export interface MemberInfo extends MemberSummary {
+  /** has no access yet: waiting for an existing member to approve */
+  pending: boolean
+  /** short code both people compare when approving, e.g. "1A2B 3C4D …" */
+  fingerprint: string
+  isMe: boolean
+}
+
 export type VaultState =
   | { status: 'no-vault' }
+  /** This computer asked to join and is waiting for an admin. */
+  | { status: 'pending'; member: MemberSummary; fingerprint: string }
   | { status: 'locked'; members: MemberSummary[] }
   | { status: 'unlocked'; me: MemberSummary }
 
@@ -59,6 +69,20 @@ export interface VaultApi {
   getEntry(id: string): Promise<Entry | null>
   saveEntry(args: { id?: string; input: EntryInput }): Promise<Entry>
   deleteEntry(id: string): Promise<void>
+  /** Ask to join an existing vault stored in a GitHub repository. Returns the fingerprint to read out to an admin. */
+  joinVault(args: { url: string; token: string; name: string; password: string }): Promise<{ fingerprint: string }>
+  /** Pending computer: fetch from GitHub to see whether access has been granted. */
+  checkApproval(): Promise<VaultState>
+  listMembers(): Promise<MemberInfo[]>
+  approveMember(id: string): Promise<void>
+  /**
+   * Remove a member and change the vault key. Returns the new recovery key (the old one stops working),
+   * or null when only a pending request was declined and the key stayed the same.
+   */
+  removeMember(id: string): Promise<{ recoveryKey: string | null }>
+  changePassword(args: { oldPassword: string; newPassword: string }): Promise<void>
+  /** Forgotten password: reset one's own access using the printed recovery key, then unlock. */
+  recoverAccess(args: { memberId: string; recoveryKey: string; newPassword: string }): Promise<void>
   getSyncStatus(): Promise<SyncStatus>
   /** Connect this vault to a GitHub repository and run the first sync. The token is stored in the OS keychain. */
   connectRemote(args: { url: string; token: string }): Promise<SyncStatus>

@@ -11,6 +11,7 @@ import {
   fingerprint,
   grantAccess,
   rekeyEntry,
+  resetMember,
   rotateVaultKey,
   unlockWithPassword,
   unlockWithRecoveryKey
@@ -242,5 +243,18 @@ describe('key rotation', () => {
     const pending = await createMemberIdentity({ name: 'Bo', password: 'bo', kdf: await kdf() })
     const rot = await rotateVaultKey(session, header, [member, pending])
     expect(rot.members[1]).toEqual(pending)
+  })
+})
+
+describe('forgotten password', () => {
+  it('gives the member a new keypair and password via an open session', async () => {
+    const { header, member, recoveryKey } = await newVault()
+    const session = await unlockWithRecoveryKey(header, recoveryKey)
+    const reset = await resetMember(session, member, 'brand-new-pw', await kdf())
+    expect(reset.id).toBe(member.id)
+    expect(reset.name).toBe(member.name)
+    expect(reset.publicKey).not.toBe(member.publicKey)
+    await expectCode(unlockWithPassword(header, reset, 'anna-pass'), 'wrong-password')
+    expect((await unlockWithPassword(header, reset, 'brand-new-pw')).vaultKey).toEqual(session.vaultKey)
   })
 })

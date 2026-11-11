@@ -58,6 +58,27 @@ export function registerIpc(service: VaultService, window: () => WebContents | u
     return service.save(x.id === undefined ? undefined : asString(x.id, 'Id'), x.input)
   })
   handle('entries:delete', (id) => service.delete(asString(id, 'Id')))
+  handle('vault:join', (a) => {
+    const x = (a ?? {}) as Record<string, unknown>
+    return service.joinVault({
+      url: asString(x.url, 'Address'),
+      token: asString(x.token, 'Token'),
+      name: asString(x.name, 'Name'),
+      password: asString(x.password, 'Password')
+    })
+  })
+  handle('vault:checkApproval', () => service.checkApproval())
+  handle('members:list', () => service.listMembers())
+  handle('members:approve', (id) => service.approveMember(asString(id, 'Id')))
+  handle('members:remove', (id) => service.removeMember(asString(id, 'Id')))
+  handle('members:changePassword', (a) => {
+    const x = (a ?? {}) as Record<string, unknown>
+    return service.changePassword(asString(x.oldPassword, 'Password'), asString(x.newPassword, 'Password'))
+  })
+  handle('vault:recover', async (a) => {
+    const x = (a ?? {}) as Record<string, unknown>
+    await service.recoverAccess(asString(x.memberId, 'Member'), asString(x.recoveryKey, 'Recovery key'), asString(x.newPassword, 'Password'))
+  })
   handle('sync:status', () => service.getSyncStatus())
   handle('sync:connect', (a) => {
     const x = (a ?? {}) as { url?: unknown; token?: unknown }

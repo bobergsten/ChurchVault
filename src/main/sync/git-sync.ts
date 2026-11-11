@@ -91,6 +91,11 @@ export class GitSync {
     if (await this.remoteUrl()) await git.deleteRemote({ ...this.base, remote: REMOTE })
   }
 
+  /** Throw away uncommitted changes in the working tree (used to undo a half-finished key rotation). */
+  async discardUncommitted(): Promise<void> {
+    await git.checkout({ ...this.base, ref: this.branch, force: true })
+  }
+
   /** Clone an existing vault repository into an empty directory. */
   async clone(url: string): Promise<void> {
     await this.wrap(() =>

@@ -18,6 +18,7 @@ try {
   let page = await app.firstWindow()
 
   // First run: create vault
+  await page.getByRole('button', { name: 'Create a new vault' }).click()
   await page.getByLabel('Your name').fill('Anna')
   await page.getByLabel(/^Password/).fill('correct horse battery')
   await page.getByLabel('Repeat password').fill('correct horse battery')
@@ -69,6 +70,15 @@ try {
   await page.getByText('No matches.').waitFor()
   await page.getByLabel('Search').fill('')
 
+  // Members dialog lists me; change password
+  await page.getByRole('button', { name: 'Members' }).click()
+  await page.getByRole('dialog', { name: 'Members' }).getByText('Anna').waitFor()
+  await page.getByLabel('Current password').fill('correct horse battery')
+  await page.getByLabel('New password').fill('a brand new password')
+  await page.getByRole('button', { name: 'Change', exact: true }).click()
+  await page.getByText('Password changed.').waitFor()
+  await page.getByRole('button', { name: 'Close' }).click()
+
   // GitHub sync dialog validates the address (no network involved)
   await page.getByRole('button', { name: 'Set up GitHub sync' }).click()
   await page.getByLabel('Repository address').fill('https://example.com/x/y')
@@ -77,13 +87,23 @@ try {
   await page.getByRole('alert').filter({ hasText: 'repository address' }).waitFor()
   await page.getByRole('button', { name: 'Cancel' }).click()
 
+  // Lock, forget the password, recover with the recovery key
+  await page.getByRole('button', { name: 'Lock' }).click()
+  await page.getByRole('button', { name: 'Unlock' }).waitFor()
+  await page.getByRole('button', { name: 'Forgot password?' }).click()
+  await page.getByLabel('Recovery key').fill(recovery.toLowerCase().replaceAll('-', ' '))
+  await page.getByLabel('New password (at least 10 characters)').fill('recovered password 1')
+  await page.getByLabel('Repeat new password').fill('recovered password 1')
+  await page.getByRole('button', { name: 'Reset password and unlock' }).click()
+  await page.getByRole('button', { name: 'Lock' }).waitFor()
+
   // Lock, restart the app, data persists
   await page.getByRole('button', { name: 'Lock' }).click()
   await page.getByRole('button', { name: 'Unlock' }).waitFor()
   await app.close()
   app = await launch()
   page = await app.firstWindow()
-  await page.getByLabel('Password').fill('correct horse battery')
+  await page.getByLabel('Password').fill('recovered password 1')
   await page.getByRole('button', { name: 'Unlock' }).click()
   await page.locator('.list li').filter({ hasText: 'Church bank' }).waitFor()
   assert.equal(await page.locator('.list li').count(), 2)

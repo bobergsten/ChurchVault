@@ -4,6 +4,7 @@ import { ENTRY_TYPES, TYPE_LABELS, type Entry, type EntryType } from '@shared/en
 import { api, errorMessage } from '../api'
 import { EntryDetail } from './EntryDetail'
 import { EntryForm } from './EntryForm'
+import { MembersDialog } from './MembersDialog'
 import { SyncBar } from './SyncBar'
 
 type Pane = { kind: 'none' } | { kind: 'view'; entry: Entry } | { kind: 'edit'; type: EntryType; entry?: Entry }
@@ -17,6 +18,7 @@ export function VaultView({ me, onLock }: { me: MemberSummary; onLock: () => voi
   const [pane, setPane] = useState<Pane>({ kind: 'none' })
   const [adding, setAdding] = useState(false)
   const [error, setError] = useState('')
+  const [members, setMembers] = useState(false)
 
   const reload = useCallback(async () => {
     try {
@@ -57,6 +59,7 @@ export function VaultView({ me, onLock }: { me: MemberSummary; onLock: () => voi
         <input className="search" type="search" placeholder="Search…" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search" />
         <span className="spacer" />
         <SyncBar onSynced={reload} />
+        <button onClick={() => setMembers(true)}>Members</button>
         <span className="who">{me.name}</span>
         <button onClick={onLock}>Lock</button>
       </header>
@@ -109,6 +112,7 @@ export function VaultView({ me, onLock }: { me: MemberSummary; onLock: () => voi
           )}
         </main>
       </div>
+      {members && <MembersDialog onClose={() => setMembers(false)} />}
     </div>
   )
 }

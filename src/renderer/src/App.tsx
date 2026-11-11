@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { VaultState } from '@shared/api'
 import { api } from './api'
-import { Setup } from './components/Setup'
+import { Pending } from './components/Pending'
+import { Welcome } from './components/Welcome'
 import { Unlock } from './components/Unlock'
 import { VaultView } from './components/VaultView'
 
@@ -30,7 +31,8 @@ export function App() {
   }, [])
 
   if (!state) return null
-  if (state.status === 'no-vault') return <Setup onDone={refresh} />
+  if (state.status === 'no-vault') return <Welcome onDone={refresh} />
+  if (state.status === 'pending') return <Pending member={state.member} fingerprint={state.fingerprint} onChange={refresh} />
   if (state.status === 'locked') return <Unlock members={state.members} onUnlocked={refresh} />
   return <VaultView me={state.me} onLock={() => void api.lock().then(refresh)} />
 }

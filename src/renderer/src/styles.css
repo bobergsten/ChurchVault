@@ -52,3 +52,8 @@ main { overflow: auto; }
 .overlay { position: fixed; inset: 0; background: #0006; display: grid; place-items: center; padding: 16px; z-index: 20; }
 .badge { margin-left: 6px; font-size: 11px; color: var(--danger); border: 1px solid var(--danger); border-radius: 8px; padding: 0 6px; }
 .banner { border: 1px solid var(--danger); border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 8px; }
+
+.card.wide { max-width: 640px; max-height: 90vh; overflow: auto; }
+.members { list-style: none; margin: 0 0 12px; padding: 0; }
+.members li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.members code { font-size: 12px; } .members-pw h3 { margin: 16px 0 8px; }

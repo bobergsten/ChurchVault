@@ -80,10 +80,12 @@ export async function createMemberIdentity(opts: {
   name: string
   password: string
   kdf?: KdfParams
+  /** Keep an existing member id (password reset); a new one is generated otherwise. */
+  id?: string
 }): Promise<MemberFile> {
   const s = await getSodium()
   const kdf = opts.kdf ?? (await defaultKdfParams())
-  const id = newId(s)
+  const id = opts.id ?? newId(s)
   const pair = s.crypto_box_keypair()
   const wrapKey = await deriveKeyFromPassword(opts.password, kdf)
   const wrapped = await seal(wrapKey, pair.privateKey, aadSecretKey(id))
@@ -200,6 +202,20 @@ export async function grantAccess(session: VaultSession, pending: MemberFile): P
       ct: await sealVaultKeyTo(pending.publicKey, session.vaultKey)
     }
   }
+}
+
+/**
+ * Forgotten password: with the vault open (e.g. through the recovery key), give an
+ * existing member a fresh keypair and a new password. Their id and name stay.
+ */
+export async function resetMember(
+  session: VaultSession,
+  member: MemberFile,
+  newPassword: string,
+  kdf?: KdfParams
+): Promise<MemberFile> {
+  const fresh = await createMemberIdentity({ name: member.name, password: newPassword, kdf, id: member.id })
+  return grantAccess(session, { ...fresh, createdAt: member.createdAt })
 }
 
 /** Re-wraps the member's secret key. Entries are untouched. */

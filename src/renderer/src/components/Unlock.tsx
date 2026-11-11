@@ -1,12 +1,14 @@
 import { useState, type FormEvent } from 'react'
 import type { MemberSummary } from '@shared/api'
 import { api, errorMessage } from '../api'
+import { Recover } from './Recover'
 
 export function Unlock({ members, onUnlocked }: { members: MemberSummary[]; onUnlocked: () => void }) {
   const [memberId, setMemberId] = useState(members[0]?.id ?? '')
   const [pw, setPw] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [recovering, setRecovering] = useState(false)
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -24,6 +26,8 @@ export function Unlock({ members, onUnlocked }: { members: MemberSummary[]; onUn
     }
   }
 
+  if (recovering) return <Recover members={members} onDone={onUnlocked} onBack={() => setRecovering(false)} />
+
   return (
     <div className="center">
       <form className="card" onSubmit={(e) => void submit(e)}>
@@ -40,6 +44,7 @@ export function Unlock({ members, onUnlocked }: { members: MemberSummary[]; onUn
         <label>Password<input type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoFocus /></label>
         {error && <p className="error" role="alert">{error}</p>}
         <button className="primary" disabled={busy || !pw}>{busy ? 'Unlocking…' : 'Unlock'}</button>
+        <button type="button" className="linklike" onClick={() => setRecovering(true)}>Forgot password?</button>
       </form>
     </div>
   )
