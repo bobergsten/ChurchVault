@@ -24,6 +24,9 @@ jobs:
       tag: ${{ steps.tag.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - id: tag
         name: Work out (and if started by hand, create) the tag
         shell: bash
