@@ -10,5 +10,5 @@ export default tseslint.config(
       '@typescript-eslint/no-unused-vars': ['error', { varsIgnorePattern: '^_', argsIgnorePattern: '^_', ignoreRestSiblings: true }]
     }
   },
-  { files: ['e2e/**'], languageOptions: { globals: { process: 'readonly', console: 'readonly' } } }
+  { files: ['e2e/**'], languageOptions: { globals: { process: 'readonly', console: 'readonly', Buffer: 'readonly', URL: 'readonly', window: 'readonly', document: 'readonly', fetch: 'readonly', globalThis: 'readonly' } } }
 )

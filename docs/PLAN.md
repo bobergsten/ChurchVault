@@ -83,6 +83,7 @@ Common fields: `id`, `type`, `title`, `tags`, `favorite`, `notes`, `attachments[
 - Clipboard cleared 20-30 s after copy. Secret fields masked by default. Screen capture protection (`setContentProtection`).
 - No secrets in logs or crash reports.
 - Optional biometric unlock (Touch ID / Windows Hello) later.
+- Milestone 8 review findings and fixes: see [SECURITY.md](SECURITY.md).
 - Known leak: commit times and file counts are visible to GitHub. Acceptable for this use.
 - GitHub accounts of all members should have 2FA enabled (documented in setup guide).
 

@@ -29,6 +29,11 @@ export interface VaultHeader {
   generation: number
   /** The vault key encrypted with the recovery key. */
   recovery: SealedBytes
+  /**
+   * One link per key rotation: the previous vault key encrypted with the key of
+   * `generation`. Lets a computer that trusted an older key verify a newer one.
+   */
+  keyChain?: (SealedBytes & { generation: number })[]
 }
 
 /** members/<id>.json */
@@ -43,6 +48,12 @@ export interface MemberFile {
   wrappedSecretKey: SealedBytes & { kdf: KdfParams }
   /** The vault key sealed to `publicKey`. Absent until an existing member grants access. */
   sealedVaultKey?: { generation: number; ct: string }
+  /**
+   * MAC over vault id, member id, name and public key, keyed from the vault key of
+   * `generation`. Written by whoever granted access; someone with only write access
+   * to the repo cannot forge it, so a swapped public key is detected.
+   */
+  attestation?: { generation: number; mac: string }
 }
 
 /** entries/<id>.vault */

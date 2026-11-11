@@ -7,6 +7,8 @@ import { join } from 'node:path'
 import assert from 'node:assert/strict'
 
 const userData = mkdtempSync(join(tmpdir(), 'cv-e2e-'))
+// Runs the unpackaged build: packaged builds disable the Node inspector (Electron fuse),
+// which Playwright needs to drive Electron.
 const launch = () =>
   electron.launch({
     args: ['.', ...(process.platform === 'linux' ? ['--no-sandbox'] : [])],
@@ -16,6 +18,22 @@ const launch = () =>
 let app = await launch()
 try {
   let page = await app.firstWindow()
+
+  // Security baseline of the page itself
+  assert.equal(new URL(page.url()).protocol, 'app:')
+  assert.equal(await page.evaluate(() => typeof globalThis.require), 'undefined')
+  assert.equal(await page.evaluate(() => typeof globalThis.process), 'undefined')
+  const blocked = await page.evaluate(() => fetch('https://example.com').then(() => 'loaded', () => 'blocked'))
+  assert.equal(blocked, 'blocked', 'CSP must block network access from the page')
+  const inline = await page.evaluate(() => {
+    const el = document.createElement('script')
+    el.textContent = 'window.__inlineRan = true'
+    document.body.appendChild(el)
+    return window.__inlineRan === true
+  })
+  assert.equal(inline, false, 'CSP must block inline scripts')
+  const traversal = await page.evaluate(() => fetch('app://bundle/../../package.json').then((r) => r.status, () => 'error'))
+  assert.notEqual(traversal, 200)
 
   // First run: create vault
   await page.getByRole('button', { name: 'Create a new vault' }).click()

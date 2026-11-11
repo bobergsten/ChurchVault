@@ -26,13 +26,41 @@ export async function cleanOpenDir(openDir: string): Promise<void> {
   await rm(openDir, { recursive: true, force: true }).catch(() => undefined) // a file may still be open in another app
 }
 
-/** Register all IPC handlers. Only calls from `window` are accepted. */
-export function registerIpc(
-  service: VaultService,
-  window: () => WebContents | undefined,
-  info: () => unknown,
+let lastCopied: string | null = null
+
+/** Clear the clipboard if it still holds something we put there (on lock and quit). */
+export async function clearClipboardIfOurs(): Promise<void> {
+  if (lastCopied !== null && (await Promise.resolve(clipboard.readText())) === lastCopied) clipboard.clear()
+  lastCopied = null
+}
+
+/**
+ * "Open" hands the file to another program. Only document and image types: never
+ * anything the system would run (.exe, .bat, .app, .lnk, scripts, installers...).
+ */
+const OPENABLE = new Set([
+  'pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'heic', 'tif', 'tiff', 'bmp',
+  'txt', 'md', 'csv', 'rtf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'pages', 'numbers', 'key'
+])
+export function isOpenable(fileName: string): boolean {
+  const m = /\.([a-z0-9]+)$/i.exec(fileName)
+  return !!m && OPENABLE.has(m[1]!.toLowerCase())
+}
+
+export interface IpcOptions {
+  window: () => WebContents | undefined
+  info: () => unknown
   openDir: string
-): void {
+  /** Origin of our own page; calls from any other frame are refused. */
+  origin: string
+}
+
+/** Register all IPC handlers. Only calls from our window's own page are accepted. */
+export function registerIpc(service: VaultService, { window, info, openDir, origin }: IpcOptions): void {
+  const trusted = (event: { sender: WebContents; senderFrame?: { url: string; parent: unknown } | null }): boolean => {
+    const frame = event.senderFrame
+    return event.sender === window() && !!frame && frame.parent === null && (frame.url === origin || frame.url.startsWith(origin + '/'))
+  }
   const owner = (): BrowserWindow | undefined => {
     const wc = window()
     return wc ? (BrowserWindow.fromWebContents(wc) ?? undefined) : undefined
@@ -41,7 +69,7 @@ export function registerIpc(
 
   const handle = <T>(channel: string, fn: (...args: unknown[]) => T | Promise<T>): void => {
     ipcMain.handle(channel, async (event: IpcMainInvokeEvent, ...args: unknown[]): Promise<IpcResult<T>> => {
-      if (event.sender !== window()) return { ok: false, code: 'forbidden', message: 'Forbidden' }
+      if (!trusted(event)) return { ok: false, code: 'forbidden', message: 'Forbidden' }
       try {
         return { ok: true, value: await fn(...args) }
       } catch (e) {
@@ -64,7 +92,7 @@ export function registerIpc(
   })
   handle('vault:lock', () => service.lock())
   ipcMain.on('vault:touch', (event) => {
-    if (event.sender === window()) service.touch()
+    if (trusted(event)) service.touch()
   })
   handle('entries:list', (a) => {
     const x = (a ?? {}) as { type?: unknown; query?: unknown }
@@ -123,6 +151,9 @@ export function registerIpc(
   handle('attachments:open', async (id) => {
     const { ref, data } = await service.readAttachment(asString(id, 'Id'))
     try {
+      if (!isOpenable(safeFileName(ref.name))) {
+        throw new UserError('not-openable', `For safety, ${ref.name} cannot be opened directly. Use "Save a copy" instead.`)
+      }
       const dir = join(openDir, randomUUID())
       await mkdir(dir, { recursive: true, mode: 0o700 })
       const file = join(dir, safeFileName(ref.name))
@@ -148,10 +179,12 @@ export function registerIpc(
     const value = asString(text, 'Text')
     service.touch()
     clipboard.writeText(value)
+    lastCopied = value
     clearTimeout(clipboardTimer)
     clipboardTimer = setTimeout(() => {
       void Promise.resolve(clipboard.readText()).then((current) => {
         if (current === value) clipboard.clear()
+        if (lastCopied === value) lastCopied = null
       })
     }, CLIPBOARD_CLEAR_MS)
   })

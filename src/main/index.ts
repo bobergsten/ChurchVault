@@ -1,8 +1,9 @@
-import { app, BrowserWindow, powerMonitor, shell } from 'electron'
+import { app, BrowserWindow, Menu, powerMonitor, session, shell, type MenuItemConstructorOptions } from 'electron'
 import { join } from 'node:path'
 import { mkdirSync, rmSync } from 'node:fs'
 import http from 'isomorphic-git/http/node'
-import { cleanOpenDir, registerIpc } from './ipc'
+import { APP_ORIGIN, handleAppScheme, registerAppScheme } from './app-protocol'
+import { clearClipboardIfOurs, cleanOpenDir, registerIpc } from './ipc'
 import { SafeStorageSecretStore } from './safe-storage'
 import { VaultService } from './vault-service'
 
@@ -22,15 +23,23 @@ function createWindow(): void {
       preload: join(import.meta.dirname, '../preload/index.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true
+      sandbox: true,
+      webSecurity: true,
+      webviewTag: false,
+      // The Linux spellchecker downloads dictionaries; notes may hold secrets. Not worth it.
+      spellcheck: false,
+      // Developer tools would expose the unlocked vault; only available when developing.
+      devTools: !app.isPackaged
     }
   })
   mainWindow = win
+  // Keep secrets out of screenshots, screen sharing and recordings (macOS and Windows).
+  win.setContentProtection(true)
   win.once('ready-to-show', () => win.show())
   win.on('closed', () => (mainWindow = undefined))
   // Never navigate the app window or open new windows inside the app.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('https://')) void shell.openExternal(url)
+    if (url.startsWith('https://github.com/')) void shell.openExternal(url)
     return { action: 'deny' }
   })
   win.webContents.on('will-navigate', (e) => e.preventDefault())
@@ -38,12 +47,30 @@ function createWindow(): void {
   if (process.env['ELECTRON_RENDERER_URL']) {
     void win.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
-    void win.loadFile(join(import.meta.dirname, '../renderer/index.html'))
+    void win.loadURL(`${APP_ORIGIN}/index.html`)
   }
 }
 
 // Lets automated tests run against a throw-away profile.
 if (process.env['CHURCHVAULT_USER_DATA']) app.setPath('userData', process.env['CHURCHVAULT_USER_DATA'])
+
+registerAppScheme()
+
+/** Minimal menu: no "Toggle Developer Tools" or reload in packaged builds; Edit keeps copy/paste shortcuts working on macOS. */
+function buildMenu(): Menu {
+  const template: MenuItemConstructorOptions[] = []
+  if (process.platform === 'darwin') template.push({ role: 'appMenu' })
+  template.push({ label: 'Edit', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }] })
+  if (!app.isPackaged) template.push({ role: 'viewMenu' })
+  template.push({ role: 'windowMenu' })
+  return Menu.buildFromTemplate(template)
+}
+
+// Belt and braces for every web contents, including any created unexpectedly.
+app.on('web-contents-created', (_e, contents) => {
+  contents.on('will-attach-webview', (e) => e.preventDefault())
+  contents.setWindowOpenHandler(() => ({ action: 'deny' }))
+})
 
 if (!app.requestSingleInstanceLock()) {
   app.quit()
@@ -56,6 +83,12 @@ if (!app.requestSingleInstanceLock()) {
   })
 
   void app.whenReady().then(() => {
+    handleAppScheme(join(import.meta.dirname, '../renderer'))
+    Menu.setApplicationMenu(buildMenu())
+    // The app needs no camera, microphone, notifications, location, etc.
+    session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false))
+    session.defaultSession.setPermissionCheckHandler(() => false)
+
     const userData = app.getPath('userData')
     const repoDir = join(userData, 'vault-repo')
     const dataDir = join(userData, 'local')
@@ -73,14 +106,22 @@ if (!app.requestSingleInstanceLock()) {
       onSyncStatus: (status) => mainWindow?.webContents.send('sync:status', status),
       onLocked: () => {
         void cleanOpenDir(openDir)
+        void clearClipboardIfOurs()
         mainWindow?.webContents.send('vault:locked')
       }
     })
-    registerIpc(service, () => mainWindow?.webContents, () => ({ platform: process.platform, version: app.getVersion() }), openDir)
+    registerIpc(service, {
+      window: () => mainWindow?.webContents,
+      info: () => ({ platform: process.platform, version: app.getVersion() }),
+      openDir,
+      // Only our own page may call in; in development that is the Vite dev server.
+      origin: process.env['ELECTRON_RENDERER_URL'] ? new URL(process.env['ELECTRON_RENDERER_URL']).origin : APP_ORIGIN
+    })
     powerMonitor.on('lock-screen', () => service.lock())
     powerMonitor.on('suspend', () => service.lock())
     app.on('before-quit', () => {
       service.lock()
+      void clearClipboardIfOurs()
       // Synchronous, so temporary decrypted copies are gone before the process exits.
       try {
         rmSync(openDir, { recursive: true, force: true })

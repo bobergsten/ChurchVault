@@ -258,3 +258,71 @@ describe('forgotten password', () => {
     expect((await unlockWithPassword(header, reset, 'brand-new-pw')).vaultKey).toEqual(session.vaultKey)
   })
 })
+
+describe('attacker with write access to the repository but not the vault key', () => {
+  it('cannot plant their own vault key on a member undetected', async () => {
+    const { attestMember, verifyKeyHistory, VaultSession } = await import('./vault')
+    const { header, member, session } = await newVault()
+    const pin = { generation: 1, keyFingerprint: await session.keyFingerprint() }
+    const s = await getSodium()
+
+    // The attacker seals a key they know to Anna's public key (sealed boxes are anonymous) and even attests it.
+    const evilKey = s.randombytes_buf(32)
+    const evil = new VaultSession(evilKey.slice(), header.vaultId, 1)
+    const planted = await attestMember(evil, {
+      ...member,
+      sealedVaultKey: { generation: 1, ct: s.to_base64(s.crypto_box_seal(evilKey, s.from_base64(member.publicKey))) }
+    })
+    const fooled = await unlockWithPassword(header, planted, 'anna-pass')
+    expect(fooled.vaultKey).toEqual(evilKey) // the crypto alone cannot tell...
+    await expectCode(verifyKeyHistory(fooled, header, pin), 'tampered') // ...but the pinned key can
+
+    // Same with a fake "rotation" to a higher generation.
+    const evil2 = new VaultSession(evilKey.slice(), header.vaultId, 2)
+    const fakeHeader = { ...header, generation: 2, keyChain: [{ generation: 2, ...(await (await import('./aead')).seal(evilKey, s.randombytes_buf(32), `churchvault/chain/v1/${header.vaultId}/2`)) }] }
+    await expectCode(verifyKeyHistory(evil2, fakeHeader, pin), 'tampered')
+    await expectCode(verifyKeyHistory(evil2, header, pin), 'tampered') // no chain at all
+  })
+
+  it('accepts legitimate rotations, even several missed while offline', async () => {
+    const { verifyKeyHistory } = await import('./vault')
+    const { header, member, session } = await newVault()
+    const pin = { generation: 1, keyFingerprint: await session.keyFingerprint() }
+    await verifyKeyHistory(session, header, pin)
+    const r1 = await rotateVaultKey(session, header, [member])
+    const r2 = await rotateVaultKey(r1.session, r1.header, r1.members)
+    const latest = await unlockWithPassword(r2.header, r2.members[0]!, 'anna-pass')
+    expect(latest.generation).toBe(3)
+    await verifyKeyHistory(latest, r2.header, pin)
+    await verifyKeyHistory(latest, r2.header, { generation: 2, keyFingerprint: await r1.session.keyFingerprint() })
+    // going back to an older key is refused
+    await expectCode(verifyKeyHistory(session, r2.header, { generation: 3, keyFingerprint: await latest.keyFingerprint() }), 'tampered')
+  })
+
+  it('cannot swap a member’s public key so the next rotation seals the key to them', async () => {
+    const { verifyMember } = await import('./vault')
+    const { header, member, session } = await newVault()
+    const bo = await grantAccess(session, await createMemberIdentity({ name: 'Bo', password: 'bo', kdf: await kdf() }))
+    expect(await verifyMember(session, member)).toBe(true)
+    expect(await verifyMember(session, bo)).toBe(true)
+
+    const attacker = await createMemberIdentity({ name: 'Bo', password: 'x', kdf: await kdf() })
+    const swapped = { ...bo, publicKey: attacker.publicKey }
+    expect(await verifyMember(session, swapped)).toBe(false)
+    expect(await verifyMember(session, { ...bo, name: 'Treasurer' })).toBe(false)
+    expect(await verifyMember(session, { ...bo, attestation: undefined })).toBe(false)
+    await expectCode(rotateVaultKey(session, header, [member, swapped]), 'untrusted-member')
+  })
+
+  it('keeps attestations valid across password changes and renews them on rotation and reset', async () => {
+    const { verifyMember } = await import('./vault')
+    const { header, member, session, recoveryKey } = await newVault()
+    expect(await verifyMember(session, await changePassword(member, 'anna-pass', 'new', await kdf()))).toBe(true)
+    const rot = await rotateVaultKey(session, header, [member])
+    expect(await verifyMember(rot.session, rot.members[0]!)).toBe(true)
+    expect(await verifyMember(rot.session, member)).toBe(false) // old generation
+    const viaRecovery = await unlockWithRecoveryKey(rot.header, rot.recoveryKey)
+    expect(await verifyMember(viaRecovery, await resetMember(viaRecovery, rot.members[0]!, 'pw2', await kdf()))).toBe(true)
+    void recoveryKey
+  })
+})

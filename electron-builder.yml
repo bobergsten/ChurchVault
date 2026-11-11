@@ -12,3 +12,13 @@ win:
 asarUnpack:
   - "**/*.node"   # native modules (SQLCipher) cannot load from inside the asar archive
 npmRebuild: false # SQLCipher ships N-API prebuilds that work in Node and Electron unchanged
+# Electron fuses: switch off ways to run arbitrary code inside the app's process.
+electronFuses:
+  runAsNode: false                            # ELECTRON_RUN_AS_NODE ignored
+  enableNodeOptionsEnvironmentVariable: false # NODE_OPTIONS ignored
+  enableNodeCliInspectArguments: false        # --inspect / debugger attach refused
+  enableCookieEncryption: true
+  onlyLoadAppFromAsar: true                   # cannot swap in an unpacked app folder
+  enableEmbeddedAsarIntegrityValidation: true # app.asar contents are checked (macOS, Windows)
+  grantFileProtocolExtraPrivileges: false     # UI is served from app://, not file://
+  resetAdHocDarwinSignature: true             # keep the unsigned macOS build launchable on Apple Silicon

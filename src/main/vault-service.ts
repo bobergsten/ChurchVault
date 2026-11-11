@@ -5,7 +5,7 @@ import type { HttpClient } from 'isomorphic-git'
 import { MAX_ATTACHMENT_BYTES, type AttachmentPreview, type AttachmentRef, type Entry, type EntryInput } from '@shared/entry'
 import { parseEntryInput } from '@shared/entry-validate'
 import type { EntrySummary, MemberInfo, MemberSummary, SyncStatus, VaultState } from '@shared/api'
-import type { KdfParams, MemberFile } from '@shared/vault-format'
+import type { KdfParams, MemberFile, VaultHeader } from '@shared/vault-format'
 import {
   VaultError,
   changePassword,
@@ -22,6 +22,8 @@ import {
   rotateVaultKey,
   unlockWithPassword,
   unlockWithRecoveryKey,
+  verifyKeyHistory,
+  verifyMember,
   type VaultSession
 } from './crypto'
 import { mimeFor, previewFor } from './attachments'
@@ -76,6 +78,9 @@ interface Unlocked {
 }
 
 const MIN_PASSWORD = 10
+/** Free attempts before delays start; then 2, 4, 8 ... seconds, capped. */
+const FREE_ATTEMPTS = 3
+const MAX_DELAY_MS = 5 * 60_000
 
 /** The vault as used by the app: owns the unlocked session and everything derived from it. */
 export class VaultService {
@@ -102,6 +107,32 @@ export class VaultService {
         return { name: me?.name ?? 'ChurchVault', email: `${me?.id ?? 'unknown'}@members.churchvault.invalid` }
       }
     })
+  }
+
+  private failedAttempts = 0
+  private nextAttemptAt = 0
+
+  /**
+   * Slow down password and recovery-key guessing in the app. (Someone who copies the
+   * files bypasses this; against them Argon2id's cost is the protection.)
+   */
+  private checkThrottle(): void {
+    const wait = this.nextAttemptAt - Date.now()
+    if (wait > 0) {
+      throw new UserError('too-many-attempts', `Too many failed attempts. Try again in ${Math.ceil(wait / 1000)} seconds.`)
+    }
+  }
+
+  private recordFailure(): void {
+    this.failedAttempts++
+    if (this.failedAttempts >= FREE_ATTEMPTS) {
+      this.nextAttemptAt = Date.now() + Math.min(2 ** (this.failedAttempts - FREE_ATTEMPTS + 1) * 1000, MAX_DELAY_MS)
+    }
+  }
+
+  private recordSuccess(): void {
+    this.failedAttempts = 0
+    this.nextAttemptAt = 0
   }
 
   /** Set while this computer waits for approval to join (so commits carry the right author). */
@@ -155,15 +186,20 @@ export class VaultService {
     const header = await this.files.readHeader()
     const member = (await this.files.listMembers()).find((m) => m.id === memberId)
     if (!header || !member) throw new UserError('not-found', 'Member not found')
+    this.checkThrottle()
     let session: VaultSession
     try {
       session = await unlockWithPassword(header, member, password)
+      this.recordSuccess()
     } catch (e) {
-      if (e instanceof VaultError && e.code === 'wrong-password') throw new UserError('wrong-password', 'Wrong password')
+      if (e instanceof VaultError && e.code === 'wrong-password') {
+        this.recordFailure()
+        throw new UserError('wrong-password', 'Wrong password')
+      }
       if (e instanceof VaultError) throw new UserError(e.code, e.message)
       throw e
     }
-    return this.start(header.vaultId, member, session)
+    return this.start(header, member, session)
   }
 
   private checkPassword(password: string): void {
@@ -172,12 +208,88 @@ export class VaultService {
     }
   }
 
+  private get trustFile(): string {
+    return join(this.opts.dataDir, 'trusted-key.json')
+  }
+
+  private async readPin(vaultId: string): Promise<{ generation: number; keyFingerprint: string } | null> {
+    try {
+      const pins = JSON.parse(await readFile(this.trustFile, 'utf8')) as Record<string, { generation: number; keyFingerprint: string }>
+      return pins[vaultId] ?? null
+    } catch {
+      return null
+    }
+  }
+
+  private async writePin(vaultId: string, session: VaultSession): Promise<void> {
+    let pins: Record<string, unknown> = {}
+    try {
+      pins = JSON.parse(await readFile(this.trustFile, 'utf8')) as Record<string, unknown>
+    } catch {
+      // first time
+    }
+    pins[vaultId] = { generation: session.generation, keyFingerprint: await session.keyFingerprint() }
+    await writeFile(this.trustFile, JSON.stringify(pins, null, 2))
+  }
+
+  /**
+   * Refuse a vault key this computer cannot verify: it must be the key trusted last
+   * time or reachable from it through the key chain, and the member file must be
+   * vouched for by it. Defends against someone with write access to the GitHub
+   * repository (but not the vault) planting their own key.
+   */
+  private async checkTrust(header: VaultHeader, member: MemberFile, session: VaultSession): Promise<void> {
+    const pin = await this.readPin(header.vaultId)
+    try {
+      if (pin) await verifyKeyHistory(session, header, pin)
+      if (!(await verifyMember(session, member))) {
+        throw new VaultError('tampered', 'Your member file was modified by someone without access to the vault')
+      }
+    } catch (e) {
+      session.close()
+      if (e instanceof VaultError) {
+        throw new UserError('tampered', `Refusing to unlock: ${e.message}. Ask another member to check the GitHub repository.`)
+      }
+      throw e
+    }
+  }
+
+  private async removeIndex(vaultId: string): Promise<void> {
+    for (const suffix of ['', '-wal', '-shm']) {
+      await rm(join(this.opts.dataDir, `index-${vaultId}.db${suffix}`), { force: true })
+    }
+  }
+
+  /**
+   * The index is keyed from the vault key, so after a key change (here or on another
+   * computer) the old file cannot be opened. It is only a cache: start a new one.
+   */
+  private async openIndex(vaultId: string, session: VaultSession): Promise<IndexDb> {
+    const file = join(this.opts.dataDir, `index-${vaultId}.db`)
+    try {
+      return IndexDb.open(file, await session.sqliteKey())
+    } catch {
+      await this.removeIndex(vaultId)
+      return IndexDb.open(file, await session.sqliteKey())
+    }
+  }
+
   /** Open the local index for an unlocked session and bring it up to date. */
-  private async start(vaultId: string, member: MemberFile, session: VaultSession): Promise<{ unreadable: number }> {
-    const index = IndexDb.open(join(this.opts.dataDir, `index-${vaultId}.db`), await session.sqliteKey())
+  private async start(header: VaultHeader, member: MemberFile, session: VaultSession): Promise<{ unreadable: number }> {
+    await this.checkTrust(header, member, session)
+    const vaultId = header.vaultId
+    const firstTime = !(await this.readPin(vaultId))
+    const index = await this.openIndex(vaultId, session)
     const repo = new EntryRepository(session, this.files, index, member.id)
     this.open = { session, index, repo, me: { id: member.id, name: member.name }, vaultId, staged: new Map() }
     const report = await repo.rebuild()
+    // First unlock on this computer (nothing to compare with yet): a key that reads none of the
+    // existing entries is not the real vault key.
+    if (firstTime && report.failed.length > 0 && report.added.length + report.updated.length + report.unchanged === 0) {
+      this.lock()
+      throw new UserError('tampered', 'Refusing to unlock: this key cannot read any of the existing entries. Ask another member to check the GitHub repository.')
+    }
+    await this.writePin(vaultId, session)
     this.touch()
     this.remoteUrl = (await this.git.isRepo()) ? await this.git.remoteUrl() : null
     if (this.opts.autoSync && this.remoteUrl) {
@@ -400,7 +512,7 @@ export class VaultService {
   }
 
   async listMembers(): Promise<MemberInfo[]> {
-    const { me } = this.unlocked()
+    const { me, session } = this.unlocked()
     const members = await this.files.listMembers()
     return Promise.all(
       members.map(async (m) => ({
@@ -408,7 +520,8 @@ export class VaultService {
         name: m.name,
         pending: !m.sealedVaultKey,
         fingerprint: await fingerprint(m.publicKey),
-        isMe: m.id === me.id
+        isMe: m.id === me.id,
+        verified: !!m.sealedVaultKey && (await verifyMember(session, m))
       }))
     )
   }
@@ -454,7 +567,15 @@ export class VaultService {
     if (!header) throw new UserError('not-found', 'Vault not found')
 
     // 1. Prepare everything in memory.
-    const rotation = await rotateVaultKey(o.session, header, remaining)
+    let rotation: Awaited<ReturnType<typeof rotateVaultKey>>
+    try {
+      rotation = await rotateVaultKey(o.session, header, remaining)
+    } catch (e) {
+      if (e instanceof VaultError && e.code === 'untrusted-member') {
+        throw new UserError('untrusted-member', `${e.message}. Remove that member first (it may have been tampered with), then try again.`)
+      }
+      throw e
+    }
     const rekeyed: { id: string; envelope: Awaited<ReturnType<typeof rekeyEntry>> }[] = []
     let unreadable = 0
     for (const entryId of await this.files.listEntryIds()) {
@@ -514,11 +635,9 @@ export class VaultService {
     const me = members.find((m) => m.id === o.me.id)!
     o.index.close()
     o.session.close()
-    await rm(join(this.opts.dataDir, `index-${o.vaultId}.db`), { force: true })
-    await rm(join(this.opts.dataDir, `index-${o.vaultId}.db-wal`), { force: true })
-    await rm(join(this.opts.dataDir, `index-${o.vaultId}.db-shm`), { force: true })
+    await this.removeIndex(o.vaultId)
     this.open = null
-    await this.start(o.vaultId, me, rotation.session)
+    await this.start(rotation.header, rotation.members.find((m) => m.id === me.id)!, rotation.session)
     await this.git.commitAll('Change vault key')
     if (this.remoteUrl) await this.syncNow() // publish at once rather than after the usual delay
     return { recoveryKey: rotation.recoveryKey }
@@ -545,16 +664,28 @@ export class VaultService {
     const header = await this.files.readHeader()
     const member = (await this.files.listMembers()).find((m) => m.id === memberId)
     if (!header || !member) throw new UserError('not-found', 'Member not found')
+    this.checkThrottle()
     let session: VaultSession
     try {
       session = await unlockWithRecoveryKey(header, recoveryKey)
+      this.recordSuccess()
     } catch (e) {
+      if (e instanceof VaultError && e.code === 'wrong-recovery-key') this.recordFailure()
       if (e instanceof VaultError) throw new UserError(e.code, e.message)
       throw e
     }
     const updated = await resetMember(session, member, newPassword, this.opts.kdf)
+    const pin = await this.readPin(header.vaultId)
+    if (pin) {
+      try {
+        await verifyKeyHistory(session, header, pin)
+      } catch (e) {
+        session.close()
+        throw new UserError('tampered', `Refusing to recover: ${(e as Error).message}`)
+      }
+    }
     await this.files.writeMember(updated)
-    const result = await this.start(header.vaultId, updated, session)
+    const result = await this.start(header, updated, session)
     await this.afterChange()
     return result
   }

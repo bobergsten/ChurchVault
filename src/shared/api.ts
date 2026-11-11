@@ -16,6 +16,8 @@ export interface MemberInfo extends MemberSummary {
   /** short code both people compare when approving, e.g. "1A2B 3C4D …" */
   fingerprint: string
   isMe: boolean
+  /** has access and the member file is vouched for by the vault key (false = possibly tampered with) */
+  verified: boolean
 }
 
 export type VaultState =

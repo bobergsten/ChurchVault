@@ -16,6 +16,9 @@ const dec = new TextDecoder()
 const aadRecovery = (vaultId: string, generation: number): string =>
   `churchvault/recovery/v1/${vaultId}/${generation}`
 const aadSecretKey = (memberId: string): string => `churchvault/member-key/v1/${memberId}`
+const aadChain = (vaultId: string, generation: number): string => `churchvault/chain/v1/${vaultId}/${generation}`
+const attestMessage = (vaultId: string, m: MemberFile): string =>
+  JSON.stringify(['churchvault/member/v1', vaultId, m.id, m.name, m.publicKey])
 const aadEntry = (vaultId: string, id: string, generation: number): string =>
   `churchvault/entry/v1/${vaultId}/${id}/${generation}`
 
@@ -48,6 +51,17 @@ export class VaultSession {
   async sqliteKey(): Promise<Uint8Array> {
     const s = await getSodium()
     return s.crypto_kdf_derive_from_key(32, 1, 'sqlitedb', this.vaultKey)
+  }
+
+  /** Identifies this exact key (for remembering which key this computer trusts). Reveals nothing about it. */
+  async keyFingerprint(): Promise<string> {
+    const s = await getSodium()
+    return s.to_hex(s.crypto_generichash(32, this.vaultKey, s.from_string('churchvault/key-pin/v1')))
+  }
+
+  async attestKey(): Promise<Uint8Array> {
+    const s = await getSodium()
+    return s.crypto_kdf_derive_from_key(s.crypto_auth_KEYBYTES, 3, 'memberat', this.vaultKey)
   }
 
   /** Separate key for attachments, so entries and blobs never share a key. */
@@ -140,8 +154,9 @@ export async function createVault(opts: {
   }
   recovery.key.fill(0)
   const member = await createMemberIdentity({ name: opts.adminName, password: opts.password, kdf: opts.kdf })
-  member.sealedVaultKey = { generation: 1, ct: await sealVaultKeyTo(member.publicKey, vaultKey) }
-  return { header, member, session: new VaultSession(vaultKey, vaultId, 1), recoveryKey: recovery.text }
+  const session = new VaultSession(vaultKey, vaultId, 1)
+  const admin = await grantAccess(session, member)
+  return { header, member: admin, session, recoveryKey: recovery.text }
 }
 
 async function openSecretKey(member: MemberFile, password: string): Promise<Uint8Array> {
@@ -201,12 +216,65 @@ export async function unlockWithRecoveryKey(header: VaultHeader, recoveryKeyText
  * Callers should first have both people compare `fingerprint(publicKey)`.
  */
 export async function grantAccess(session: VaultSession, pending: MemberFile): Promise<MemberFile> {
-  return {
+  return attestMember(session, {
     ...pending,
     sealedVaultKey: {
       generation: session.generation,
       ct: await sealVaultKeyTo(pending.publicKey, session.vaultKey)
     }
+  })
+}
+
+/** Vouch for a member's identity (id, name, public key) with the current vault key. */
+export async function attestMember(session: VaultSession, member: MemberFile): Promise<MemberFile> {
+  const s = await getSodium()
+  const key = await session.attestKey()
+  const mac = s.crypto_auth(attestMessage(session.vaultId, member), key)
+  key.fill(0)
+  return { ...member, attestation: { generation: session.generation, mac: s.to_base64(mac) } }
+}
+
+/** True if the member file was vouched for with this session's key and not changed since. */
+export async function verifyMember(session: VaultSession, member: MemberFile): Promise<boolean> {
+  if (!member.attestation || member.attestation.generation !== session.generation) return false
+  const s = await getSodium()
+  const key = await session.attestKey()
+  try {
+    return s.crypto_auth_verify(s.from_base64(member.attestation.mac), attestMessage(session.vaultId, member), key)
+  } catch {
+    return false
+  } finally {
+    key.fill(0)
+  }
+}
+
+/**
+ * Is `session`'s key the one this computer trusted before (`pinned`), or a
+ * legitimate successor of it? Follows the key chain back from the new key; a key
+ * planted by someone who never held the trusted key cannot produce that chain.
+ * Throws `tampered` if not.
+ */
+export async function verifyKeyHistory(
+  session: VaultSession,
+  header: VaultHeader,
+  pinned: { generation: number; keyFingerprint: string }
+): Promise<void> {
+  const fail = (why: string): VaultError => new VaultError('tampered', `The vault key could not be verified (${why})`)
+  if (session.generation < pinned.generation) throw fail('it is older than the key this computer already trusts')
+  const s = await getSodium()
+  let key: Uint8Array = session.vaultKey.slice()
+  try {
+    for (let g = session.generation; g > pinned.generation; g--) {
+      const link = header.keyChain?.find((l) => l.generation === g)
+      const prev = link ? await open(key, link, aadChain(header.vaultId, g)) : null
+      key.fill(0)
+      if (!prev) throw fail(`no valid link to generation ${g - 1}`)
+      key = prev
+    }
+    const fp = s.to_hex(s.crypto_generichash(32, key, s.from_string('churchvault/key-pin/v1')))
+    if (fp !== pinned.keyFingerprint) throw fail('it does not lead back to the trusted key')
+  } finally {
+    key.fill(0)
   }
 }
 
@@ -263,25 +331,34 @@ export async function rotateVaultKey(
   if (!session.isOpen || session.generation !== header.generation) {
     throw new VaultError('stale-generation', 'Session does not match the current vault key')
   }
+  // Never seal the new key to a public key nobody vouched for (it may have been swapped in).
+  for (const m of remainingMembers) {
+    if (m.sealedVaultKey && !(await verifyMember(session, m))) {
+      throw new VaultError('untrusted-member', `The member file of ${m.name} could not be verified`)
+    }
+  }
   const s = await getSodium()
   const generation = header.generation + 1
   const vaultKey = s.randombytes_buf(32)
+  const newSession = new VaultSession(vaultKey, header.vaultId, generation)
   const recovery = await generateRecoveryKey()
+  const link = await seal(vaultKey, session.vaultKey, aadChain(header.vaultId, generation))
   const newHeader: VaultHeader = {
     ...header,
     generation,
-    recovery: await wrapForRecovery(vaultKey, recovery.key, header.vaultId, generation)
+    recovery: await wrapForRecovery(vaultKey, recovery.key, header.vaultId, generation),
+    keyChain: [...(header.keyChain ?? []), { generation, ...link }]
   }
   recovery.key.fill(0)
   const members = await Promise.all(
     remainingMembers.map(async (m) =>
       m.sealedVaultKey
-        ? { ...m, sealedVaultKey: { generation, ct: await sealVaultKeyTo(m.publicKey, vaultKey) } }
+        ? attestMember(newSession, { ...m, sealedVaultKey: { generation, ct: await sealVaultKeyTo(m.publicKey, vaultKey) } })
         : m
     )
   )
   return {
-    session: new VaultSession(vaultKey, header.vaultId, generation),
+    session: newSession,
     header: newHeader,
     members,
     recoveryKey: recovery.text

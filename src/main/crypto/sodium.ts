@@ -18,7 +18,8 @@ export class VaultError extends Error {
       | 'tampered'
       | 'pending-member'
       | 'stale-generation'
-      | 'unsupported-format',
+      | 'unsupported-format'
+      | 'untrusted-member',
     message: string
   ) {
     super(message)

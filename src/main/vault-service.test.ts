@@ -115,4 +115,26 @@ describe('VaultService', () => {
     vi.advanceTimersByTime(300)
     expect(locked).toBe(1)
   })
+
+  it('slows down repeated wrong passwords', async () => {
+    const s = await service()
+    await s.createVault('Anna', 'long-enough-pw')
+    const st = await s.getState()
+    if (st.status !== 'locked') throw new Error()
+    const id = st.members[0]!.id
+    vi.useFakeTimers({ toFake: ['Date'] })
+    for (let i = 0; i < 3; i++) await expect(s.unlock(id, 'wrong')).rejects.toMatchObject({ code: 'wrong-password' })
+    // even the right password must wait now
+    await expect(s.unlock(id, 'long-enough-pw')).rejects.toMatchObject({ code: 'too-many-attempts' })
+    vi.advanceTimersByTime(2100)
+    await expect(s.unlock(id, 'wrong')).rejects.toMatchObject({ code: 'wrong-password' })
+    vi.advanceTimersByTime(2100)
+    await expect(s.unlock(id, 'long-enough-pw')).rejects.toMatchObject({ code: 'too-many-attempts' }) // now 4 s
+    vi.advanceTimersByTime(2000)
+    await s.unlock(id, 'long-enough-pw')
+    s.lock()
+    await expect(s.unlock(id, 'wrong')).rejects.toMatchObject({ code: 'wrong-password' }) // counter was reset
+    await s.unlock(id, 'long-enough-pw')
+    s.lock()
+  })
 })

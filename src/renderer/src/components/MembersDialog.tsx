@@ -94,6 +94,11 @@ export function MembersDialog({ onClose }: { onClose: () => void }) {
             <li key={m.id}>
               <div>
                 <strong>{m.name}</strong> {m.isMe && <span className="tag">you</span>} {m.pending && <span className="badge">waiting for approval</span>}
+                {!m.pending && !m.verified && (
+                  <span className="badge" title="This member file was changed by someone without access to the vault. Remove this member and invite them again.">
+                    ⚠ could not be verified
+                  </span>
+                )}
                 <div className="hint">Security code: <code>{m.fingerprint}</code></div>
               </div>
               <span className="row">
