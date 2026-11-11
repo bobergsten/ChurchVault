@@ -9,3 +9,6 @@ mac:
   identity: null   # unsigned for now
 win:
   target: nsis
+asarUnpack:
+  - "**/*.node"   # native modules (SQLCipher) cannot load from inside the asar archive
+npmRebuild: true  # rebuild native modules against Electron's ABI when packaging

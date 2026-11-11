@@ -15,3 +15,10 @@
 **Rotation:** `rotateVaultKey` makes a new vault key and bumps `generation`; the caller re-encrypts entries with `rekeyEntry`. A removed member keeps whatever they could already read, so the real secrets must also be changed.
 
 **Not yet covered:** attachment (chunked) encryption (milestone 7), commit signing, biometric unlock. Only tested against round-trip/tamper cases; there is no external audit, so treat as unreviewed until the milestone 8 security pass.
+
+## Storage (milestone 3, `src/main/storage`)
+
+- `FileStore`: the Git working tree (`vault.json`, `members/`, `entries/`). Atomic writes; entry ids must be UUIDs, so a hostile file name cannot escape the folder.
+- `IndexDb`: SQLCipher database (key from `VaultSession.sqliteKey()`), with an FTS5 search table. Secret fields (passwords, card number/CVV/PIN, door codes, TOTP) are never put in the search table. User search text is turned into quoted prefix terms, so FTS operators are not interpreted.
+- `EntryRepository`: create/update/delete/list/search. `rebuild()` brings the index in line with the files after a pull and reports files that fail to decrypt instead of aborting.
+- Native module note: `npm test` runs against Node's ABI. Packaging (`npm run dist`) rebuilds `better-sqlite3-multiple-ciphers` for Electron, so run `npm rebuild` afterwards before running tests again.
