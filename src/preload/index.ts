@@ -14,6 +14,16 @@ const api = {
   getEntry: (id) => call('entries:get', id),
   saveEntry: (args) => call('entries:save', args),
   deleteEntry: (id) => call('entries:delete', id),
+  getSyncStatus: () => call('sync:status'),
+  connectRemote: (args) => call('sync:connect', args),
+  syncNow: () => call('sync:now'),
+  disconnectRemote: () => call('sync:disconnect'),
+  resolveConflict: (args) => call('entries:resolveConflict', args),
+  onSyncStatus: (cb) => {
+    const listener = (_e: unknown, status: Parameters<typeof cb>[0]): void => cb(status)
+    ipcRenderer.on('sync:status', listener)
+    return () => ipcRenderer.removeListener('sync:status', listener)
+  },
   copy: (text) => call('clipboard:copy', text),
   onLocked: (cb) => {
     const listener = (): void => cb()

@@ -61,6 +61,11 @@ interface EntryBase<T extends EntryType> {
   updatedBy: string
   /** incremented on each save; used to detect concurrent edits */
   rev: number
+  /**
+   * Set on a preserved copy of an entry that was edited on two computers at once;
+   * holds the id of the entry whose remote version was kept.
+   */
+  conflictOf?: string
 }
 
 export type Entry = { [T in EntryType]: EntryBase<T> }[EntryType]

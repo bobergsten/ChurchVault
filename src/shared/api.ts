@@ -23,6 +23,17 @@ export interface EntrySummary {
   favorite: boolean
   updatedAt: string
   updatedBy: string
+  /** set when this is a preserved copy from an edit conflict */
+  conflictOf?: string
+}
+
+export interface SyncStatus {
+  configured: boolean
+  /** e.g. https://github.com/church/vault.git */
+  remoteUrl: string | null
+  syncing: boolean
+  lastSyncAt: string | null
+  lastError: { code: string; message: string } | null
 }
 
 /** Error thrown in the renderer for a failed call. `code` is stable, `message` is user-presentable. */
@@ -48,6 +59,15 @@ export interface VaultApi {
   getEntry(id: string): Promise<Entry | null>
   saveEntry(args: { id?: string; input: EntryInput }): Promise<Entry>
   deleteEntry(id: string): Promise<void>
+  getSyncStatus(): Promise<SyncStatus>
+  /** Connect this vault to a GitHub repository and run the first sync. The token is stored in the OS keychain. */
+  connectRemote(args: { url: string; token: string }): Promise<SyncStatus>
+  syncNow(): Promise<SyncStatus>
+  disconnectRemote(): Promise<SyncStatus>
+  /** Resolve an edit conflict: keep the preserved copy (replacing the original) or discard it. */
+  resolveConflict(args: { id: string; keepCopy: boolean }): Promise<void>
+  /** Subscribe to sync status changes. */
+  onSyncStatus(cb: (s: SyncStatus) => void): () => void
   /** Copy to the clipboard; main clears it after a delay if unchanged. */
   copy(text: string): Promise<void>
   /** Subscribe to auto-lock; returns an unsubscribe function. */

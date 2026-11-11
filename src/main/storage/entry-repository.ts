@@ -51,10 +51,43 @@ export class EntryRepository {
       createdAt: current.createdAt,
       updatedAt: new Date().toISOString(),
       updatedBy: this.memberId,
-      rev: current.rev + 1
+      rev: current.rev + 1,
+      ...(current.conflictOf ? { conflictOf: current.conflictOf } : {})
     } as Entry
     await this.persist(entry)
     return entry
+  }
+
+  /** Preserve a version that lost an edit conflict as a separate, flagged entry. */
+  async createConflictCopy(ours: Entry, originalId: string): Promise<Entry> {
+    const copy = {
+      ...ours,
+      id: randomUUID(),
+      updatedBy: this.memberId,
+      rev: 1,
+      conflictOf: originalId
+    } as Entry
+    await this.persist(copy)
+    return copy
+  }
+
+  /** `keepCopy`: the copy's content replaces the original. Otherwise the copy is dropped. */
+  async resolveConflict(copyId: string, keepCopy: boolean): Promise<void> {
+    const copy = this.index.get(copyId)
+    if (!copy?.conflictOf) throw new Error('Not a conflict copy')
+    const original = this.index.get(copy.conflictOf)
+    if (keepCopy) {
+      const { id: _id, createdAt: _c, updatedAt: _u, updatedBy: _b, rev: _r, conflictOf: _o, ...input } = copy
+      if (original) {
+        await this.update(original.id, input as EntryInput)
+      } else {
+        // The original no longer exists: the copy simply becomes a normal entry.
+        const { conflictOf: _drop, ...rest } = copy
+        await this.persist({ ...rest, rev: copy.rev + 1, updatedAt: new Date().toISOString(), updatedBy: this.memberId } as Entry)
+        return
+      }
+    }
+    await this.delete(copyId)
   }
 
   async delete(id: string): Promise<void> {

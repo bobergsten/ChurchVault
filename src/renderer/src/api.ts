@@ -20,6 +20,12 @@ export const api: VaultApi = {
   getEntry: (id) => unwrap(raw.getEntry(id)),
   saveEntry: (a) => unwrap(raw.saveEntry(a)),
   deleteEntry: (id) => unwrap(raw.deleteEntry(id)),
+  getSyncStatus: () => unwrap(raw.getSyncStatus()),
+  connectRemote: (a) => unwrap(raw.connectRemote(a)),
+  syncNow: () => unwrap(raw.syncNow()),
+  disconnectRemote: () => unwrap(raw.disconnectRemote()),
+  resolveConflict: (a) => unwrap(raw.resolveConflict(a)),
+  onSyncStatus: (cb) => raw.onSyncStatus(cb),
   copy: (t) => unwrap(raw.copy(t)),
   onLocked: (cb) => raw.onLocked(cb)
 }

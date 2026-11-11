@@ -69,6 +69,14 @@ try {
   await page.getByText('No matches.').waitFor()
   await page.getByLabel('Search').fill('')
 
+  // GitHub sync dialog validates the address (no network involved)
+  await page.getByRole('button', { name: 'Set up GitHub sync' }).click()
+  await page.getByLabel('Repository address').fill('https://example.com/x/y')
+  await page.getByLabel('Access token').fill('ghp_dummy')
+  await page.getByRole('button', { name: 'Connect' }).click()
+  await page.getByRole('alert').filter({ hasText: 'repository address' }).waitFor()
+  await page.getByRole('button', { name: 'Cancel' }).click()
+
   // Lock, restart the app, data persists
   await page.getByRole('button', { name: 'Lock' }).click()
   await page.getByRole('button', { name: 'Unlock' }).waitFor()

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fastKdfParamsForTests } from './crypto'
+import { MemorySecretStore } from './secret-store'
 import { UserError, VaultService } from './vault-service'
 
 let dir: string
@@ -10,7 +11,7 @@ let locked = 0
 const login = { type: 'login', title: 'Bank', tags: [], favorite: false, notes: '', attachments: [], fields: { url: 'u', username: 'x', password: 'p' } }
 
 async function service(idleMs = 0): Promise<VaultService> {
-  return new VaultService({ repoDir: join(dir, 'repo'), dataDir: join(dir, 'data'), kdf: await fastKdfParamsForTests(), idleMs, onLocked: () => locked++ })
+  return new VaultService({ repoDir: join(dir, 'repo'), dataDir: join(dir, 'data'), kdf: await fastKdfParamsForTests(), idleMs, onLocked: () => locked++, http: {} as never, secrets: new MemorySecretStore() })
 }
 
 beforeEach(async () => {

@@ -4,6 +4,7 @@ import { ENTRY_TYPES, TYPE_LABELS, type Entry, type EntryType } from '@shared/en
 import { api, errorMessage } from '../api'
 import { EntryDetail } from './EntryDetail'
 import { EntryForm } from './EntryForm'
+import { SyncBar } from './SyncBar'
 
 type Pane = { kind: 'none' } | { kind: 'view'; entry: Entry } | { kind: 'edit'; type: EntryType; entry?: Entry }
 
@@ -39,12 +40,23 @@ export function VaultView({ me, onLock }: { me: MemberSummary; onLock: () => voi
     void reload()
   }
 
+  async function resolve(entry: Entry, keepCopy: boolean) {
+    try {
+      await api.resolveConflict({ id: entry.id, keepCopy })
+      setPane({ kind: 'none' })
+      void reload()
+    } catch (e) {
+      setError(errorMessage(e))
+    }
+  }
+
   return (
     <div className="app">
       <header>
         <strong>ChurchVault</strong>
         <input className="search" type="search" placeholder="Search…" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search" />
         <span className="spacer" />
+        <SyncBar onSynced={reload} />
         <span className="who">{me.name}</span>
         <button onClick={onLock}>Lock</button>
       </header>
@@ -75,7 +87,7 @@ export function VaultView({ me, onLock }: { me: MemberSummary; onLock: () => voi
                   className={pane.kind !== 'none' && 'entry' in pane && pane.entry?.id === r.id ? 'selected' : ''}
                   onClick={() => void open(r.id)}
                 >
-                  <span>{ICONS[r.type]}</span> <span className="t">{r.favorite && '★ '}{r.title}</span>
+                  <span>{ICONS[r.type]}</span> <span className="t">{r.favorite && '★ '}{r.title}</span>{r.conflictOf && <span className="badge">⚠ Conflict</span>}
                 </button>
               </li>
             ))}
@@ -84,7 +96,7 @@ export function VaultView({ me, onLock }: { me: MemberSummary; onLock: () => voi
         <main>
           {pane.kind === 'none' && <p className="hint pad">Select an entry or create a new one.</p>}
           {pane.kind === 'view' && (
-            <EntryDetail entry={pane.entry} onEdit={() => setPane({ kind: 'edit', type: pane.entry.type, entry: pane.entry })} onDelete={() => void remove(pane.entry)} />
+            <EntryDetail entry={pane.entry} onEdit={() => setPane({ kind: 'edit', type: pane.entry.type, entry: pane.entry })} onDelete={() => void remove(pane.entry)} onResolve={(keepCopy) => void resolve(pane.entry, keepCopy)} />
           )}
           {pane.kind === 'edit' && (
             <EntryForm

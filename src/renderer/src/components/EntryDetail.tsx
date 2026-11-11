@@ -28,10 +28,25 @@ function Field({ label, value, secret }: { label: string; value: string; secret?
   )
 }
 
-export function EntryDetail({ entry, onEdit, onDelete }: { entry: Entry; onEdit: () => void; onDelete: () => void }) {
+export function EntryDetail({ entry, onEdit, onDelete, onResolve }: {
+  entry: Entry
+  onEdit: () => void
+  onDelete: () => void
+  onResolve: (keepCopy: boolean) => void
+}) {
   const fields = entry.fields as Record<string, string | undefined>
   return (
     <div className="detail">
+      {entry.conflictOf && (
+        <div className="banner" role="alert">
+          <strong>Edit conflict.</strong> This entry was changed on two computers at the same time. This is the version that
+          was <em>not</em> kept. Compare it with the other entry of the same name, then choose:
+          <div className="row">
+            <button onClick={() => onResolve(true)}>Use this version</button>
+            <button onClick={() => onResolve(false)}>Discard this version</button>
+          </div>
+        </div>
+      )}
       <div className="row between">
         <h2>{entry.favorite && '★ '}{entry.title}</h2>
         <span className="row"><button onClick={onEdit}>Edit</button><button className="danger" onClick={onDelete}>Delete</button></span>

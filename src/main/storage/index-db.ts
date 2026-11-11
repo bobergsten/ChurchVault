@@ -10,6 +10,7 @@ export interface IndexRow {
   updatedAt: string
   updatedBy: string
   rev: number
+  conflictOf?: string
 }
 
 /** Plain text used for full-text search: everything except secret values. */
@@ -26,6 +27,8 @@ export function toFtsQuery(input: string): string | null {
   const words = input.match(/[\p{L}\p{N}]+/gu)
   return words ? words.map((w) => `"${w}"*`).join(' ') : null
 }
+
+const SCHEMA_VERSION = 2
 
 /**
  * Local SQLCipher database: a disposable, searchable cache of the decrypted
@@ -53,6 +56,12 @@ export class IndexDb {
   }
 
   private migrate(): void {
+    // The index is a disposable cache: on a schema change just start over and rebuild from the files.
+    const version = this.db.pragma('user_version', { simple: true }) as number
+    if (version < SCHEMA_VERSION) {
+      this.db.exec('DROP TABLE IF EXISTS entries; DROP TABLE IF EXISTS entries_fts;')
+      this.db.pragma(`user_version = ${SCHEMA_VERSION}`)
+    }
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS entries (
         id TEXT PRIMARY KEY,
@@ -63,6 +72,7 @@ export class IndexDb {
         updated_at TEXT NOT NULL,
         updated_by TEXT NOT NULL,
         rev INTEGER NOT NULL,
+        conflict_of TEXT,
         file_hash TEXT NOT NULL,
         data TEXT NOT NULL
       );
@@ -76,10 +86,10 @@ export class IndexDb {
     const tx = this.db.transaction(() => {
       this.db
         .prepare(
-          `INSERT INTO entries (id, type, title, tags, favorite, updated_at, updated_by, rev, file_hash, data)
-           VALUES (@id, @type, @title, @tags, @favorite, @updatedAt, @updatedBy, @rev, @fileHash, @data)
+          `INSERT INTO entries (id, type, title, tags, favorite, updated_at, updated_by, rev, conflict_of, file_hash, data)
+           VALUES (@id, @type, @title, @tags, @favorite, @updatedAt, @updatedBy, @rev, @conflictOf, @fileHash, @data)
            ON CONFLICT(id) DO UPDATE SET type=@type, title=@title, tags=@tags, favorite=@favorite,
-             updated_at=@updatedAt, updated_by=@updatedBy, rev=@rev, file_hash=@fileHash, data=@data`
+             updated_at=@updatedAt, updated_by=@updatedBy, rev=@rev, conflict_of=@conflictOf, file_hash=@fileHash, data=@data`
         )
         .run({
           id: entry.id,
@@ -90,6 +100,7 @@ export class IndexDb {
           updatedAt: entry.updatedAt,
           updatedBy: entry.updatedBy,
           rev: entry.rev,
+          conflictOf: entry.conflictOf ?? null,
           fileHash,
           data: JSON.stringify(entry)
         })
@@ -135,7 +146,7 @@ export class IndexDb {
       params.push(fts)
     }
     const sql =
-      `SELECT e.id, e.type, e.title, e.tags, e.favorite, e.updated_at, e.updated_by, e.rev FROM ${from}` +
+      `SELECT e.id, e.type, e.title, e.tags, e.favorite, e.updated_at, e.updated_by, e.rev, e.conflict_of FROM ${from}` +
       (where.length ? ` WHERE ${where.join(' AND ')}` : '') +
       ' ORDER BY e.favorite DESC, e.title COLLATE NOCASE ASC'
     const rows = this.db.prepare(sql).all(...params) as Record<string, unknown>[]
@@ -147,7 +158,8 @@ export class IndexDb {
       favorite: r.favorite === 1,
       updatedAt: r.updated_at as string,
       updatedBy: r.updated_by as string,
-      rev: r.rev as number
+      rev: r.rev as number,
+      ...(r.conflict_of ? { conflictOf: r.conflict_of as string } : {})
     }))
   }
 

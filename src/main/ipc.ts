@@ -58,6 +58,17 @@ export function registerIpc(service: VaultService, window: () => WebContents | u
     return service.save(x.id === undefined ? undefined : asString(x.id, 'Id'), x.input)
   })
   handle('entries:delete', (id) => service.delete(asString(id, 'Id')))
+  handle('sync:status', () => service.getSyncStatus())
+  handle('sync:connect', (a) => {
+    const x = (a ?? {}) as { url?: unknown; token?: unknown }
+    return service.connectRemote(asString(x.url, 'Address'), asString(x.token, 'Token'))
+  })
+  handle('sync:now', () => service.syncNow())
+  handle('sync:disconnect', () => service.disconnectRemote())
+  handle('entries:resolveConflict', (a) => {
+    const x = (a ?? {}) as { id?: unknown; keepCopy?: unknown }
+    return service.resolveConflict(asString(x.id, 'Id'), x.keepCopy === true)
+  })
   handle('clipboard:copy', (text) => {
     const value = asString(text, 'Text')
     service.touch()

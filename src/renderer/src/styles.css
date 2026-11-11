@@ -46,3 +46,9 @@ main { overflow: auto; }
 .generated { font-size: 16px; word-break: break-all; }
 @media (max-width: 900px) { .body { grid-template-columns: 130px 220px 1fr; } }
 .formrow { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; } .formrow .row input { flex: 1; }
+
+.sync { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 12px; }
+.linklike { border: 0; background: none; color: var(--muted); text-decoration: underline; padding: 0 4px; }
+.overlay { position: fixed; inset: 0; background: #0006; display: grid; place-items: center; padding: 16px; z-index: 20; }
+.badge { margin-left: 6px; font-size: 11px; color: var(--danger); border: 1px solid var(--danger); border-radius: 8px; padding: 0 6px; }
+.banner { border: 1px solid var(--danger); border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 8px; }

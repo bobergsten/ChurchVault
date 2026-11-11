@@ -1,7 +1,9 @@
 import { app, BrowserWindow, powerMonitor, shell } from 'electron'
 import { join } from 'node:path'
 import { mkdirSync } from 'node:fs'
+import http from 'isomorphic-git/http/node'
 import { registerIpc } from './ipc'
+import { SafeStorageSecretStore } from './safe-storage'
 import { VaultService } from './vault-service'
 
 const IDLE_LOCK_MS = 5 * 60 * 1000
@@ -63,6 +65,10 @@ if (!app.requestSingleInstanceLock()) {
       repoDir,
       dataDir,
       idleMs: IDLE_LOCK_MS,
+      http,
+      secrets: new SafeStorageSecretStore(join(dataDir, 'secrets.json')),
+      autoSync: true,
+      onSyncStatus: (status) => mainWindow?.webContents.send('sync:status', status),
       onLocked: () => mainWindow?.webContents.send('vault:locked')
     })
     registerIpc(service, () => mainWindow?.webContents, () => ({ platform: process.platform, version: app.getVersion() }))
