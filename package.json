@@ -17,6 +17,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@types/libsodium-wrappers-sumo": "^0.7.8",
     "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
@@ -31,6 +32,7 @@
     "vitest": "^5.1.0"
   },
   "dependencies": {
+    "libsodium-wrappers-sumo": "^0.8.4",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   }
