@@ -46,27 +46,37 @@ xattr -dr com.apple.quarantine /Applications/ChurchVault.app
 
 Only the **first** person does this. Everyone else follows section 3.
 
-### 2a. Create a private GitHub repository for the vault
+### 2a. Create a GitHub organization and a private vault repository
 
 You need a free GitHub account (<https://github.com/signup>). Turn on two-factor authentication (Settings → Password and authentication); it protects the church's data.
 
-1. On github.com click **+** → **New repository**.
-2. Name it, for example, `church-vault`.
-3. Choose **Private**. This matters.
-4. Do **not** add a README, .gitignore or license. Leave it empty.
-5. Click **Create repository** and copy its address, e.g. `https://github.com/your-name/church-vault`.
+**Why an organization:** each member signs in to GitHub with their **own** token, never a shared one. A fine-grained token, the safe kind that can be limited to the vault alone, only works for repositories owned by the token holder's own account or by an organization they belong to. Putting the vault in a free organization lets every member use such a token. It also means the vault doesn't belong to any one person.
+
+1. On github.com click **+** → **New organization** → **Free**. Name it, for example, `your-church-vault`.
+2. Under **People**, make sure at least **two** members will be organization **owners** (invite them now or later, see section 3). Then the church never depends on one person's account.
+3. In the organization, click **+** → **New repository**. Owner: the organization. Name it, for example, `vault`.
+4. Choose **Private**. This matters.
+5. Do **not** add a README, .gitignore or license. Leave it empty.
+6. Click **Create repository** and copy its address, e.g. `https://github.com/your-church-vault/vault`.
 
 This repository is separate from the ChurchVault app itself. It only ever holds encrypted files.
 
+**Vault already in your personal account?** Move it: repository → **Settings** → **Danger Zone** → **Transfer ownership** → the organization. Afterwards, on every computer that uses ChurchVault: header → **Disconnect**, then **Set up GitHub sync** with the new address and that member's token.
+
 ### 2b. Create an access token
 
-The app uses a token, which works like a limited password, to upload and download the encrypted files.
+The app uses a token, which works like a limited password, to upload and download the encrypted files. **Every member creates their own** and never shares it. When someone leaves, removing them from GitHub stops their token without affecting anyone else.
 
 1. github.com → your picture → **Settings** → **Developer settings** → **Personal access tokens** → **Fine-grained tokens** → **Generate new token**.
 2. Name it `ChurchVault on <this computer>`. Set **Expiration** to the longest allowed, and put a reminder in your calendar for that date. When it runs out, the app shows a sync error with an **Update token** button (section 5).
-3. **Repository access**: *Only select repositories* → choose the vault repository.
-4. **Permissions** → *Repository permissions* → **Contents: Read and write**. Nothing else is needed.
-5. Click **Generate token** and copy it. GitHub shows it only once.
+3. **Resource owner**: choose the **organization**, not your own account. If the organization isn't listed, accept the invitation to join it first.
+4. **Repository access**: *Only select repositories* → choose the vault repository.
+5. **Permissions** → *Repository permissions* → **Contents: Read and write**. Nothing else is needed.
+6. Click **Generate token** and copy it. GitHub shows it only once.
+
+If GitHub says the token is **pending approval**, an organization owner approves it: organization → **Settings** → **Personal access tokens** → **Pending requests**. Owners can also turn the approval requirement off on that page.
+
+**If the vault must stay in a personal account** (not recommended): other members can't create fine-grained tokens for it. They need a *classic* token instead: **Personal access tokens** → **Tokens (classic)** → **Generate new token (classic)**, scope **`repo`**. A classic token can reach *every* private repository its owner has access to, not only the vault, so only use it if their GitHub accounts hold nothing else private.
 
 ### 2c. Create the vault
 
@@ -87,13 +97,13 @@ The vault is ready. Add the first entries with **+ New**.
 1. Creates a GitHub account (with two-factor authentication) and tells you their GitHub user name.
 2. Installs the app (section 1).
 
-**You (an existing member):**
+**An organization owner:**
 
-3. On github.com open the vault repository → **Settings** → **Collaborators** → **Add people** → their user name. Tell them to accept the invitation (they get an e-mail).
+3. On github.com open the organization → **People** → **Invite member** → their user name (role *Member*, or *Owner* if they should be able to invite others). Then open the vault repository → **Settings** → **Collaborators and teams** → **Add people** → their user name with the **Write** role. Tell them to accept the invitation (they get an e-mail).
 
 **The new person:**
 
-4. Creates their **own** token, as in 2b (only the vault repository, Contents: Read and write).
+4. Creates their **own** token, as in 2b (resource owner: the organization; only the vault repository; Contents: Read and write).
 5. Opens ChurchVault → **Join an existing vault**, enters their name, a password of their own, the repository address and their token, and clicks **Request access**.
 6. The app shows a **security code** (for example `1FB7 E358 FD15 B1F3 49FE`).
 
@@ -123,7 +133,7 @@ The vault is ready. Add the first entries with **+ New**.
 
 1. Open **Members** → **Remove** next to their name and confirm.
 2. The app changes the vault's key and shows a **new recovery key**. Print it and replace (shred) the old printout; the old key no longer works.
-3. On github.com remove them as a collaborator (repository → Settings → Collaborators).
+3. On github.com remove them from the organization (organization → **People** → their name → **Remove from organization**). This also stops their token.
 4. Change the important passwords, cards and door codes they knew. The app cannot make someone forget what they have seen.
 
 Do this when the others are not in the middle of editing.
@@ -138,7 +148,7 @@ On the unlock screen click **Forgot password?**, enter the printed recovery key 
 
 ### The GitHub token expired
 
-The header shows a sync error and an **Update token** button. Create or regenerate the token (2b) and paste it.
+The header shows a sync error and an **Update token** button. Regenerate your token (Settings → Developer settings → Fine-grained tokens → the token → **Regenerate**), or create a new one as in 2b, and paste it.
 
 ### New computer for an existing member
 
