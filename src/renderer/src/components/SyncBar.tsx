@@ -34,8 +34,8 @@ function ConnectDialog({ onClose }: { onClose: () => void }) {
       <form className="card" onSubmit={(e) => void submit(e)}>
         <h1>Sync with GitHub</h1>
         <p className="hint">
-          1. On github.com create a <strong>private</strong> repository (empty, no README).<br />
-          2. Create a fine-grained access token limited to <em>only that repository</em> with <em>Contents: Read and write</em>.<br />
+          1. On github.com create a free organization for the church and a <strong>private</strong> repository in it (empty, no README).<br />
+          2. Create your own fine-grained access token: resource owner the organization, <em>only that repository</em>, <em>Contents: Read and write</em>.<br />
           3. Paste both below. Everything uploaded is encrypted; GitHub never sees your passwords.
         </p>
         <label>Repository address<input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://github.com/your-church/vault" autoFocus /></label>
@@ -74,7 +74,8 @@ function TokenDialog({ onClose }: { onClose: () => void }) {
         <h1>Update the GitHub token</h1>
         <p className="hint">
           GitHub tokens expire. On github.com go to Settings → Developer settings → Fine-grained tokens, regenerate
-          yours (or create a new one: only the vault repository, Contents: Read and write) and paste it here.
+          yours (or create a new one: resource owner the organization, only the vault repository, Contents: Read and
+          write) and paste it here.
         </p>
         <label>New access token<input type="password" value={token} onChange={(e) => setToken(e.target.value)} autoComplete="off" autoFocus /></label>
         {error && <p className="error" role="alert">{error}</p>}

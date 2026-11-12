@@ -29,8 +29,9 @@ export function Join({ onDone, onBack }: { onDone: () => void; onBack: () => voi
       <form className="card" onSubmit={(e) => void submit(e)}>
         <h1>Join the church vault</h1>
         <p className="hint">
-          Ask an admin for the repository address and to add you as a collaborator on GitHub. Then create your own
-          fine-grained access token (Contents: Read and write, only that repository).
+          Ask an admin for the repository address and to add you to the church's GitHub organization. Then create your
+          own fine-grained access token: resource owner the organization, only the vault repository, Contents: Read and
+          write. Never use someone else's token. Details: the installation guide (docs/INSTALL.md).
         </p>
         <label>Your name<input value={name} onChange={(e) => setName(e.target.value)} autoFocus /></label>
         <label>Choose a password (at least 10 characters)<input type="password" value={pw} onChange={(e) => setPw(e.target.value)} /></label>

@@ -64,7 +64,7 @@ export function MembersDialog({ onClose }: { onClose: () => void }) {
   const remove = (m: MemberInfo) => {
     const text = m.pending
       ? `Decline the request from ${m.name}?`
-      : `Remove ${m.name}?\n\nThe vault key will be changed so ${m.name} cannot read anything new. But ${m.name} may already have seen the existing passwords, so change the important ones (bank, cards, door codes).\n\nAlso remove ${m.name} as a collaborator on GitHub.`
+      : `Remove ${m.name}?\n\nThe vault key will be changed so ${m.name} cannot read anything new. But ${m.name} may already have seen the existing passwords, so change the important ones (bank, cards, door codes).\n\nAlso remove ${m.name} from the church's GitHub organization.`
     if (!window.confirm(text)) return
     void run(async () => {
       const r = await api.removeMember(m.id)
@@ -108,7 +108,7 @@ export function MembersDialog({ onClose }: { onClose: () => void }) {
             </li>
           ))}
         </ul>
-        <p className="hint">To add someone: they choose “Join an existing vault” on their computer, you add them as a collaborator on GitHub, then approve them here after checking their security code.</p>
+        <p className="hint">To add someone: they choose “Join an existing vault” on their computer, you add them to the church's GitHub organization with write access to the vault repository, then approve them here after checking their security code.</p>
         {error && <p className="error" role="alert">{error}</p>}
         <ChangePassword />
       </div>
