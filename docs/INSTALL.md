@@ -1,5 +1,7 @@
 # ChurchVault: installation and setup guide
 
+*[Svenska (Swedish version)](INSTALL.sv.md)*
+
 Once it is running, see the [user manual](USER-MANUAL.md) for everyday use.
 
 ChurchVault keeps the church's passwords, card details, door codes and documents in one shared, encrypted vault. Everything is encrypted on your own computer before it is uploaded. The copy on GitHub can't be read without a member's password.
