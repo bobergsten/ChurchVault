@@ -2,7 +2,7 @@
 
 *[English version](USER-MANUAL.md)*
 
-För dig som använder ChurchVault 0.1 i vardagen. Installation och första inställning av GitHub beskrivs i [installationsguiden](INSTALL.md) (på engelska).
+För dig som använder ChurchVault 0.1 i vardagen. Installation och första inställning av GitHub beskrivs i [installationsguiden](INSTALL.sv.md).
 
 **Om språket i programmet:** ChurchVault visas på engelska. Namn på knappar och skärmar står därför kvar på engelska i **fetstil** i den här handboken, så att du känner igen dem på skärmen. Förklaringarna är på svenska.
 
