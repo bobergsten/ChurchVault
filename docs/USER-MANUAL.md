@@ -1,5 +1,7 @@
 # ChurchVault User Manual
 
+*[Svenska (Swedish version)](USER-MANUAL.sv.md)*
+
 For everyday users of ChurchVault 0.1. The first-time installation and GitHub setup are in the [installation guide](INSTALL.md).
 
 ## About ChurchVault
